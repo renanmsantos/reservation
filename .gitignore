@@ -2,8 +2,12 @@
 node_modules/
 .next/
 .out/
-/dist/
+dist/
 .vercel/
+.turbo/
+.cache/
+webapp/.next/
+webapp/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
