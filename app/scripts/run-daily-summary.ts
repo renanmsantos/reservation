@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type PostgrestMaybeSingleResponse } from "@supabase/supabase-js";
 import { config } from "dotenv";
 
 const envPath = path.join(process.cwd(), ".env.local");
@@ -18,7 +18,9 @@ if (!supabaseUrl || !serviceRoleKey) {
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-const getCount = async (builder: any) => {
+type CountQuery = PromiseLike<PostgrestMaybeSingleResponse<unknown>>;
+
+const getCount = async (builder: CountQuery) => {
   const { count, error } = await builder;
   if (error) {
     throw error;

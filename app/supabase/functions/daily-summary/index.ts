@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.181.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { createClient, type PostgrestMaybeSingleResponse } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -14,7 +14,9 @@ const supabase = supabaseUrl && serviceRoleKey
     })
   : null;
 
-const getCount = async (builder: any) => {
+type CountQuery = PromiseLike<PostgrestMaybeSingleResponse<unknown>>;
+
+const getCount = async (builder: CountQuery) => {
   const { count, error } = await builder;
   if (error) {
     throw error;
