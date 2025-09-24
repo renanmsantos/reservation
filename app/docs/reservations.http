@@ -1,0 +1,37 @@
+### Create a confirmed reservation (replace tokens with real values)
+POST {{baseUrl}}/api/reservations
+Content-Type: application/json
+
+{
+  "fullName": "Jordan Carter",
+  "email": "jordan@example.com"
+}
+
+### Attempt duplicate reservation (should return 409)
+POST {{baseUrl}}/api/reservations
+Content-Type: application/json
+
+{
+  "fullName": "Jordan Carter"
+}
+
+### Fetch current queue snapshot
+GET {{baseUrl}}/api/reservations
+
+### Release an active reservation by id
+DELETE {{baseUrl}}/api/reservations/{reservationId}
+
+### Admin: add duplicate-name override (basic auth required)
+POST {{baseUrl}}/api/admin/overrides
+Authorization: Basic {{adminAuth}}
+Content-Type: application/json
+
+{
+  "fullName": "Jordan Carter",
+  "reason": "Family members with identical names",
+  "durationHours": 6
+}
+
+### Admin: export roster CSV
+GET {{baseUrl}}/api/admin/reservations/export?vanId={{vanId}}
+Authorization: Basic {{adminAuth}}
