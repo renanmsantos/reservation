@@ -11,8 +11,8 @@
     "test": "vitest --run",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
-    "db:apply": "ts-node --transpile-only scripts/apply-schema.ts",
-    "report:daily": "ts-node --transpile-only scripts/run-daily-summary.ts"
+    "db:apply": "ts-node --transpile-only --project tsconfig.scripts.json scripts/apply-schema.ts",
+    "report:daily": "ts-node --transpile-only --project tsconfig.scripts.json scripts/run-daily-summary.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
