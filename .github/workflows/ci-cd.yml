@@ -1,0 +1,152 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches:
+      - "*"
+  push:
+    branches:
+      - main
+
+jobs:
+  checks:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Verify Supabase schema (dry run)
+        if: env.SUPABASE_DB_URL != ''
+        run: npm run db:apply -- --dry-run
+
+      - name: Checks summary
+        run: |
+          echo "### ✅ Quality checks complete" >> $GITHUB_STEP_SUMMARY
+          echo "- Lint" >> $GITHUB_STEP_SUMMARY
+          echo "- TypeScript type-check" >> $GITHUB_STEP_SUMMARY
+          echo "- Unit tests" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${SUPABASE_DB_URL}" ]; then
+            echo "- Supabase schema dry run" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Supabase schema dry run **skipped** (SUPABASE_DB_URL not set)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  deploy-preview:
+    name: Deploy Preview
+    needs: checks
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' && secrets.VERCEL_TOKEN != '' }}
+    defaults:
+      run:
+        working-directory: webapp
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+
+      - name: Build preview artifacts
+        run: vercel build --token="$VERCEL_TOKEN"
+
+      - name: Deploy preview
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")
+          echo "url=$url" >> $GITHUB_OUTPUT
+
+      - name: Publish preview URL
+        run: |
+          echo "### 🔁 Vercel Preview" >> $GITHUB_STEP_SUMMARY
+          echo "[Preview deployment](${{ steps.deploy.outputs.url }})" >> $GITHUB_STEP_SUMMARY
+
+  deploy-production:
+    name: Deploy Production
+    needs: checks
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.VERCEL_TOKEN != '' }}
+    defaults:
+      run:
+        working-directory: webapp
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build production artifacts
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy production
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$url" >> $GITHUB_OUTPUT
+
+      - name: Publish production URL
+        run: |
+          echo "### 🚀 Vercel Production" >> $GITHUB_STEP_SUMMARY
+          echo "[Production deployment](${{ steps.deploy.outputs.url }})" >> $GITHUB_STEP_SUMMARY
