@@ -39,3 +39,4 @@ Create a lightweight web app that lets riders reserve seats on scheduled vans. R
 - **Day 0**: Finalize UI mockups, set up repo scaffolding, connect Supabase, define unique-reservation constraint.
 - **Day 1**: Implement join queue flow, waitlist promotion logic, release seat flow, and duplicate-name enforcement. Ship MVP.
 - **Post-launch**: Add basic admin view, analytics dashboard, and controlled overrides for legitimate duplicate identities.
+
