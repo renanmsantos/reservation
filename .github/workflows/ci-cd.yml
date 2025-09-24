@@ -16,7 +16,7 @@ jobs:
       vercel_token_present: ${{ steps.vercel_token_check.outputs.present }}
     defaults:
       run:
-        working-directory: webapp
+        working-directory: app
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -77,7 +77,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' && needs.checks.outputs.vercel_token_present == 'true' }}
     defaults:
       run:
-        working-directory: webapp
+        working-directory: app
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -91,7 +91,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -123,7 +123,7 @@ jobs:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.checks.outputs.vercel_token_present == 'true' }}
     defaults:
       run:
-        working-directory: webapp
+        working-directory: app
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -137,7 +137,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
       - name: Install dependencies
         run: npm ci
