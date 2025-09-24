@@ -1,7 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-# Use Node16 modules/resolution so ts-node matches runtime
     "module": "Node16",
     "moduleResolution": "Node16"
   },
