@@ -26,6 +26,16 @@ const sql = fs.readFileSync(schemaPath, "utf-8");
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 
+const isNetworkError = (error: unknown) => {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    ["ENETUNREACH", "ECONNREFUSED", "ETIMEDOUT"].includes((error as { code: string }).code)
+  );
+};
+
 (async () => {
   const client = new Client({
     connectionString,
@@ -37,7 +47,17 @@ const dryRun = args.includes("--dry-run");
   let transactionStarted = false;
 
   try {
-    await client.connect();
+    try {
+      await client.connect();
+    } catch (error) {
+      if (dryRun && isNetworkError(error)) {
+        console.warn(
+          `Skipping schema dry run: database unreachable (${(error as Error).message})`,
+        );
+        return;
+      }
+      throw error;
+    }
     await client.query("BEGIN");
     transactionStarted = true;
     // Drop the trigger if it already exists to prevent schema application errors
