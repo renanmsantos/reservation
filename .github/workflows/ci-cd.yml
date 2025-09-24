@@ -12,6 +12,8 @@ jobs:
   checks:
     name: Quality Gates
     runs-on: ubuntu-latest
+    outputs:
+      vercel_token_present: ${{ steps.vercel_token_check.outputs.present }}
     defaults:
       run:
         working-directory: webapp
@@ -47,6 +49,15 @@ jobs:
         if: env.SUPABASE_DB_URL != ''
         run: npm run db:apply -- --dry-run
 
+      - name: Detect Vercel token
+        id: vercel_token_check
+        run: |
+          if [ -n "${VERCEL_TOKEN}" ]; then
+            echo "present=true" >> $GITHUB_OUTPUT
+          else
+            echo "present=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checks summary
         run: |
           echo "### ✅ Quality checks complete" >> $GITHUB_STEP_SUMMARY
@@ -63,7 +74,7 @@ jobs:
     name: Deploy Preview
     needs: checks
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' && secrets.VERCEL_TOKEN != '' }}
+    if: ${{ github.event_name == 'pull_request' && needs.checks.outputs.vercel_token_present == 'true' }}
     defaults:
       run:
         working-directory: webapp
@@ -109,7 +120,7 @@ jobs:
     name: Deploy Production
     needs: checks
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.VERCEL_TOKEN != '' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.checks.outputs.vercel_token_present == 'true' }}
     defaults:
       run:
         working-directory: webapp
