@@ -25,7 +25,6 @@ type UpdateEventPayload = {
   name?: string;
   date?: string;
   status?: string;
-  totalCost?: number;
 };
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -61,7 +60,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       );
     }
 
-    const updates: { status?: EventStatus; name?: string; eventDate?: string; totalCost?: number } = {};
+    const updates: { status?: EventStatus; name?: string; eventDate?: string } = {};
 
     if (body.status) {
       if (!isValidEventStatus(body.status)) {
@@ -86,13 +85,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         return NextResponse.json({ message: "Data inválida. Use o formato dd/mm/aaaa." }, { status: 422 });
       }
       updates.eventDate = isoDate;
-    }
-
-    if (body.totalCost !== undefined) {
-      if (Number(body.totalCost) < 0) {
-        return NextResponse.json({ message: "O custo total não pode ser negativo." }, { status: 422 });
-      }
-      updates.totalCost = Number(body.totalCost);
     }
 
     if (Object.keys(updates).length === 0) {

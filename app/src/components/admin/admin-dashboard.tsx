@@ -33,6 +33,8 @@ type VanSummary = {
 type ReservationRecord = QueueReservation & {
   joinedAt: string;
   releasedAt: string | null;
+  chargedAmount: number;
+  hasPaid: boolean;
 };
 
 type AdminReservationApiRecord = {
@@ -51,6 +53,7 @@ const isActiveReservationStatus = (
 type EventVanSummary = {
   id: string;
   status: string;
+  vanCost: number;
   perPassengerCost: number | null;
   closedAt: string | null;
   van: {
@@ -65,6 +68,7 @@ type EventVanSummary = {
 type AdminEventVanApiRecord = {
   id: string;
   status: string;
+  van_cost: number;
   per_passenger_cost: number | null;
   closed_at: string | null;
   van: {
@@ -190,16 +194,17 @@ const AdminDashboard = () => {
   const [newEventForm, setNewEventForm] = React.useState({
     name: "",
     date: "",
-    totalCost: "",
     status: "planejado",
   });
   const [savingEvent, setSavingEvent] = React.useState(false);
   const [updatingEventId, setUpdatingEventId] = React.useState<string | null>(null);
-  const [eventCostInput, setEventCostInput] = React.useState("");
-  const [attachForm, setAttachForm] = React.useState({ vanId: "", status: "aberta" });
+  const [attachForm, setAttachForm] = React.useState({ vanId: "", status: "aberta", cost: "" });
   const [attachingVan, setAttachingVan] = React.useState(false);
   const [updatingVanStatuses, setUpdatingVanStatuses] = React.useState<Set<string>>(new Set());
   const [detachingVanAssociations, setDetachingVanAssociations] = React.useState<Set<string>>(new Set());
+  const [vanCostInputs, setVanCostInputs] = React.useState<Record<string, string>>({});
+  const [updatingVanCosts, setUpdatingVanCosts] = React.useState<Set<string>>(new Set());
+  const [updatingPayments, setUpdatingPayments] = React.useState<Set<string>>(new Set());
 
   const { notify } = useNotifications();
   const router = useRouter();
@@ -346,6 +351,7 @@ const AdminDashboard = () => {
         vans: (event.event_vans ?? []).map((item: AdminEventVanApiRecord) => ({
           id: item.id,
           status: item.status,
+          vanCost: item.van_cost !== null && item.van_cost !== undefined ? Number(item.van_cost) : 0,
           perPassengerCost: item.per_passenger_cost !== null ? Number(item.per_passenger_cost) : null,
           closedAt: item.closed_at ?? null,
           van: item.van
@@ -391,11 +397,14 @@ const AdminDashboard = () => {
 
   React.useEffect(() => {
     if (selectedEvent) {
-      setEventCostInput(selectedEvent.totalCost ? String(selectedEvent.totalCost) : "");
-      setAttachForm((previous) => ({ ...previous, vanId: "" }));
+      const nextInputs: Record<string, string> = Object.fromEntries(
+        selectedEvent.vans.map((item) => [item.id, item.vanCost ? item.vanCost.toFixed(2) : ""])
+      );
+      setVanCostInputs(nextInputs);
+      setAttachForm((previous) => ({ ...previous, vanId: "", cost: "" }));
     } else {
-      setEventCostInput("");
-      setAttachForm({ vanId: "", status: "aberta" });
+      setVanCostInputs({});
+      setAttachForm({ vanId: "", status: "aberta", cost: "" });
     }
   }, [selectedEvent]);
 
@@ -592,7 +601,7 @@ const AdminDashboard = () => {
       }
 
       notify({ tone: "success", message: "Evento criado com sucesso." });
-      setNewEventForm({ name: "", date: "", totalCost: "", status: "planejado" });
+      setNewEventForm({ name: "", date: "", status: "planejado" });
       await loadAdminEvents();
     } catch (error: unknown) {
       notify({
@@ -626,34 +635,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleEventCostUpdate = async (eventId: string) => {
-    const totalCost = Number(eventCostInput.replace(",", "."));
-    if (Number.isNaN(totalCost) || totalCost < 0) {
-      notify({ tone: "error", message: "Informe um valor válido para o custo." });
-      return;
-    }
-
-    setUpdatingEventId(eventId);
-    try {
-      const response = await fetch(`/api/admin/events/${eventId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ totalCost }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        notify({ tone: "error", message: payload.message ?? "Não foi possível atualizar o custo." });
-        return;
-      }
-      notify({ tone: "success", message: "Custo do evento atualizado." });
-      await loadAdminEvents();
-    } catch (error: unknown) {
-      notify({ tone: "error", message: error instanceof Error ? error.message : "Falha ao atualizar o custo." });
-    } finally {
-      setUpdatingEventId(null);
-    }
-  };
-
   const handleAttachVan = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedEvent) {
@@ -665,12 +646,25 @@ const AdminDashboard = () => {
       return;
     }
 
+    if (!attachForm.cost.trim()) {
+      notify({ tone: "error", message: "Informe o custo da van." });
+      return;
+    }
+
+    const normalizedCost = attachForm.cost.replace(/\s+/g, "").replace(",", ".");
+    const parsedCost = Number(normalizedCost);
+
+    if (!Number.isFinite(parsedCost) || parsedCost < 0) {
+      notify({ tone: "error", message: "Informe um custo válido (>= 0)." });
+      return;
+    }
+
     setAttachingVan(true);
     try {
       const response = await fetch(`/api/admin/events/${selectedEvent.id}/vans`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vanId: attachForm.vanId, status: attachForm.status }),
+        body: JSON.stringify({ vanId: attachForm.vanId, status: attachForm.status, cost: parsedCost }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -678,7 +672,7 @@ const AdminDashboard = () => {
         return;
       }
       notify({ tone: "success", message: "Van associada ao evento." });
-      setAttachForm({ vanId: "", status: "aberta" });
+      setAttachForm({ vanId: "", status: "aberta", cost: "" });
       await Promise.all([loadAdminEvents(), loadVans()]);
     } catch (error: unknown) {
       notify({ tone: "error", message: error instanceof Error ? error.message : "Falha ao associar a van." });
@@ -711,6 +705,97 @@ const AdminDashboard = () => {
       setUpdatingVanStatuses((prev) => {
         const next = new Set(prev);
         next.delete(vanAssociationId);
+        return next;
+      });
+    }
+  };
+
+  const handleVanCostInputChange = React.useCallback((associationId: string, value: string) => {
+    setVanCostInputs((previous) => ({ ...previous, [associationId]: value }));
+  }, []);
+
+  const handleVanCostSave = async (eventId: string, association: EventVanSummary) => {
+    const vanId = association.van?.id;
+    if (!vanId) {
+      notify({ tone: "error", message: "Van inválida para atualizar custo." });
+      return;
+    }
+
+    const rawValue = vanCostInputs[association.id] ?? "";
+    const normalized = rawValue.replace(/\s+/g, "").replace(',', '.');
+    const parsedCost = Number(normalized);
+
+    if (!Number.isFinite(parsedCost) || parsedCost < 0) {
+      notify({ tone: "error", message: "Informe um custo válido (>= 0)." });
+      return;
+    }
+
+    setUpdatingVanCosts((prev) => {
+      const next = new Set(prev);
+      next.add(association.id);
+      return next;
+    });
+
+    try {
+      const response = await fetch(`/api/admin/events/${eventId}/vans/${vanId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cost: parsedCost }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        notify({ tone: "error", message: payload.message ?? "Não foi possível atualizar o custo." });
+        return;
+      }
+
+      notify({ tone: "success", message: "Custo da van atualizado." });
+      setVanCostInputs((previous) => ({ ...previous, [association.id]: parsedCost.toFixed(2) }));
+      await Promise.all([loadAdminEvents(), loadVans()]);
+    } catch (error: unknown) {
+      notify({ tone: "error", message: error instanceof Error ? error.message : "Falha ao atualizar custo." });
+    } finally {
+      setUpdatingVanCosts((prev) => {
+        const next = new Set(prev);
+        next.delete(association.id);
+        return next;
+      });
+    }
+  };
+
+  const handleTogglePayment = async (reservationId: string, nextValue: boolean) => {
+    setUpdatingPayments((prev) => {
+      const next = new Set(prev);
+      next.add(reservationId);
+      return next;
+    });
+
+    try {
+      const response = await fetch(`/api/admin/reservations/${reservationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hasPaid: nextValue }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        notify({ tone: "error", message: payload.message ?? "Não foi possível atualizar o pagamento." });
+        return;
+      }
+
+      setReservations((previous) =>
+        previous.map((reservation) =>
+          reservation.id === reservationId ? { ...reservation, hasPaid: nextValue } : reservation,
+        ),
+      );
+      notify({
+        tone: "success",
+        message: nextValue ? "Pagamento confirmado." : "Pagamento marcado como pendente.",
+      });
+    } catch (error: unknown) {
+      notify({ tone: "error", message: error instanceof Error ? error.message : "Falha ao atualizar pagamento." });
+    } finally {
+      setUpdatingPayments((prev) => {
+        const next = new Set(prev);
+        next.delete(reservationId);
         return next;
       });
     }
@@ -824,7 +909,7 @@ const AdminDashboard = () => {
             <CardDescription>Cadastre eventos, defina custos e acompanhe vans associadas.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <form className="grid gap-3 md:grid-cols-4" onSubmit={handleEventCreate}>
+            <form className="grid gap-3 md:grid-cols-3" onSubmit={handleEventCreate}>
               <Input
                 placeholder="Nome do evento"
                 value={newEventForm.name}
@@ -834,11 +919,6 @@ const AdminDashboard = () => {
                 placeholder="Data (dd/mm/aaaa)"
                 value={newEventForm.date}
                 onChange={(event) => setNewEventForm((prev) => ({ ...prev, date: event.target.value }))}
-              />
-              <Input
-                placeholder="Custo total"
-                value={newEventForm.totalCost}
-                onChange={(event) => setNewEventForm((prev) => ({ ...prev, totalCost: event.target.value }))}
               />
               <select
                 className={selectClassName}
@@ -851,7 +931,7 @@ const AdminDashboard = () => {
                   </option>
                 ))}
               </select>
-              <Button className="md:col-span-4" disabled={savingEvent} type="submit">
+              <Button className="md:col-span-3" disabled={savingEvent} type="submit">
                 {savingEvent ? "Salvando…" : "Criar evento"}
               </Button>
             </form>
@@ -914,31 +994,12 @@ const AdminDashboard = () => {
                             ))}
                           </select>
                         </div>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                          <Input
-                            className="sm:w-48"
-                            placeholder="Custo total"
-                            value={eventCostInput}
-                            onChange={(event) => setEventCostInput(event.target.value)}
-                            disabled={updatingEventId === selectedEvent.id || eventLocked}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={updatingEventId === selectedEvent.id || eventLocked}
-                            onClick={() => handleEventCostUpdate(selectedEvent.id)}
-                          >
-                            Atualizar custo
-                          </Button>
-                        </div>
-
-                        <form
+<form
                           className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-3"
                           onSubmit={handleAttachVan}
                         >
                           <h4 className="text-sm font-semibold text-foreground">Associar vans</h4>
-                          <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                          <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
                             <select
                               className={selectClassName}
                               value={attachForm.vanId}
@@ -952,6 +1013,12 @@ const AdminDashboard = () => {
                                 </option>
                               ))}
                             </select>
+                            <Input
+                              placeholder="Custo da van"
+                              value={attachForm.cost}
+                              onChange={(event) => setAttachForm((prev) => ({ ...prev, cost: event.target.value }))}
+                              disabled={attachingVan || eventLocked}
+                            />
                             <select
                               className={selectClassName}
                               value={attachForm.status}
@@ -990,66 +1057,101 @@ const AdminDashboard = () => {
                             )}
                             {selectedEvent.vans.map((item) => {
                               const van = item.van;
+                              const vanId = van?.id ?? "";
+                              const isUpdatingStatus = updatingVanStatuses.has(item.id);
+                              const isDetaching = detachingVanAssociations.has(item.id);
+                              const isUpdatingCost = updatingVanCosts.has(item.id);
+                              const costInputValue = vanCostInputs[item.id] ?? "";
+                              const statusLabel = item.status.replace("_", " ");
+                              const canEdit = Boolean(van) && !eventLocked;
+
                               return (
                                 <div
                                   key={item.id}
-                                  className="flex flex-col gap-3 rounded-lg border border-border/60 bg-background/50 p-3 md:flex-row md:items-center md:justify-between"
+                                  className="flex flex-col gap-3 rounded-lg border border-border/60 bg-background/50 p-3"
                                 >
-                                  <div>
-                                    <p className="text-sm font-semibold text-foreground">
-                                      {van?.name ?? "Van removida"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {van ? `${van.capacity} lugares · Saída ${formatDate(van.departureTimestamp)}` : "—"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                      Custo por passageiro: {formatCurrency(item.perPassengerCost)}
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <select
-                                      className={selectClassName}
-                                      value={item.status}
-                                      onChange={(event) =>
-                                        handleEventVanStatusChange(
-                                          selectedEvent.id,
-                                          item.id,
-                                          van?.id ?? "",
-                                          event.target.value,
-                                        )
-                                      }
-                                      disabled={
-                                        updatingVanStatuses.has(item.id) ||
-                                        detachingVanAssociations.has(item.id) ||
-                                        !van ||
-                                        eventLocked
-                                      }
-                                    >
-                                      {EVENT_VAN_STATUS_OPTIONS.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <Badge className="bg-primary/15 text-[11px] uppercase tracking-wide text-primary-foreground/80">
-                                      {item.status.replace("_", " ")}
-                                    </Badge>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      className="text-xs uppercase tracking-wide"
-                                      onClick={() =>
-                                        handleEventVanDetach(selectedEvent.id, item.id, van?.id ?? "")
-                                      }
-                                      disabled={
-                                        detachingVanAssociations.has(item.id) ||
-                                        updatingVanStatuses.has(item.id) ||
-                                        !van ||
-                                        eventLocked
-                                      }
-                                    >
-                                      {detachingVanAssociations.has(item.id) ? "Removendo…" : "Desassociar"}
-                                    </Button>
+                                  <div className="flex flex-col gap-2">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                      <div className="space-y-1">
+                                        <p className="text-sm font-semibold text-foreground">
+                                          {van?.name ?? "Van removida"}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {van
+                                            ? `${van.capacity} lugares · Saída ${formatDate(van.departureTimestamp)}`
+                                            : "—"}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Custo da van: {formatCurrency(item.vanCost)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Valor por integrante: {formatCurrency(item.perPassengerCost)}
+                                        </p>
+                                      </div>
+                                      <div className="flex flex-col items-end gap-2">
+                                        <Badge className="bg-primary/15 text-[11px] uppercase tracking-wide text-primary-foreground/80">
+                                          {statusLabel}
+                                        </Badge>
+                                        <div className="flex flex-wrap justify-end gap-2">
+                                          {item.status === "fechada" ? (
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              className="text-xs uppercase tracking-wide"
+                                              onClick={() =>
+                                                handleEventVanStatusChange(selectedEvent.id, item.id, vanId, "aberta")
+                                              }
+                                              disabled={!canEdit || !vanId || isUpdatingStatus || isDetaching}
+                                            >
+                                              {isUpdatingStatus ? "Reabrindo…" : "Reabrir van"}
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              className="text-xs uppercase tracking-wide"
+                                              onClick={() =>
+                                                handleEventVanStatusChange(selectedEvent.id, item.id, vanId, "fechada")
+                                              }
+                                              disabled={!canEdit || !vanId || isUpdatingStatus || isDetaching}
+                                            >
+                                              {isUpdatingStatus ? "Fechando…" : "Fechar van"}
+                                            </Button>
+                                          )}
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="text-xs uppercase tracking-wide"
+                                            onClick={() => handleEventVanDetach(selectedEvent.id, item.id, vanId)}
+                                            disabled={!vanId || eventLocked || isDetaching || isUpdatingStatus}
+                                          >
+                                            {isDetaching ? "Removendo…" : "Desassociar"}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-wrap items-end gap-2">
+                                      <Input
+                                        className="w-full sm:w-48"
+                                        placeholder="Atualizar custo"
+                                        value={costInputValue}
+                                        onChange={(event) => handleVanCostInputChange(item.id, event.target.value)}
+                                        disabled={!canEdit || !vanId || isUpdatingCost}
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => handleVanCostSave(selectedEvent.id, item)}
+                                        disabled={!canEdit || !vanId || isUpdatingCost}
+                                      >
+                                        {isUpdatingCost ? "Salvando…" : "Salvar custo"}
+                                      </Button>
+                                    </div>
+                                    {item.status === "cheia" && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Van cheia — novas reservas entram na lista de espera automaticamente.
+                                      </p>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1286,12 +1388,56 @@ const AdminDashboard = () => {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <QueueSection
-                emptyState="Nenhum passageiro confirmado."
-                highlightedName={null}
-                items={confirmed}
-                title="Passageiros confirmados"
-              />
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Pagamentos dos confirmados</h3>
+                  <span className="text-xs text-muted-foreground">{confirmed.length} passageiros</span>
+                </div>
+                <div className="space-y-2">
+                  {confirmed.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhum passageiro confirmado no momento.</p>
+                  ) : (
+                    confirmed.map((reservation) => {
+                      const isUpdating = updatingPayments.has(reservation.id);
+                      const amountLabel = reservation.chargedAmount > 0 ? formatCurrency(reservation.chargedAmount) : "Valor pendente";
+                      return (
+                        <div
+                          key={reservation.id}
+                          className="flex flex-col gap-2 rounded-md border border-border/50 bg-background/40 p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{reservation.fullName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Posição {reservation.position} · {amountLabel}
+                              </p>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-border/60 bg-background text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                checked={reservation.hasPaid}
+                                onChange={(event) => handleTogglePayment(reservation.id, event.target.checked)}
+                                disabled={isUpdating}
+                              />
+                              {reservation.hasPaid ? "Pago" : "Pendente"}
+                            </label>
+                          </div>
+                          {!reservation.hasPaid && reservation.chargedAmount > 0 && (
+                            <p className="text-xs text-muted-foreground">Aguardando pagamento de {formatCurrency(reservation.chargedAmount)}.</p>
+                          )}
+                          {reservation.hasPaid && (
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-primary/70">Pagamento confirmado</p>
+                          )}
+                          {isUpdating && (
+                            <p className="text-[11px] text-muted-foreground">Atualizando…</p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
               <QueueSection
                 emptyState="A lista de espera está vazia."
                 highlightedName={null}

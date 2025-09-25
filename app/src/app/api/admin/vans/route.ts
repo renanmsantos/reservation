@@ -27,7 +27,7 @@ export async function GET() {
       ? await client
           .from("event_vans")
           .select(
-            "van_id, status, per_passenger_cost, event:events(id, name, status, total_cost, event_date)"
+            "van_id, status, van_cost, per_passenger_cost, event:events(id, name, status, total_cost, event_date)"
           )
           .in("van_id", vanIds)
         : { data: [] };
@@ -68,9 +68,10 @@ export async function GET() {
                 perPassengerCost: eventInfo.per_passenger_cost,
                 totalCost: eventInfo.event?.[0]?.total_cost ?? null,
                 eventDate: eventInfo.event?.[0]?.event_date ?? null,
+                vanCost: eventInfo.van_cost !== null && eventInfo.van_cost !== undefined ? Number(eventInfo.van_cost) : null,
               }
             : van.default_event_id
-              ? { id: van.default_event_id, name: null, status: null, vanStatus: null, perPassengerCost: null, totalCost: null, eventDate: null }
+              ? { id: van.default_event_id, name: null, status: null, vanStatus: null, perPassengerCost: null, totalCost: null, eventDate: null, vanCost: null }
               : null,
         };
       }),

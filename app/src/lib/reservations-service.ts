@@ -12,6 +12,8 @@ export type ReservationRow = {
   status: ReservationStatus;
   position: number;
   joined_at: string;
+  charged_amount: number;
+  has_paid: boolean;
 };
 
 type VanRow = {
@@ -23,6 +25,8 @@ type VanRow = {
 
 type EventAssociationRow = {
   status: string;
+  per_passenger_cost: number | null;
+  van_cost: number | null;
   event: {
     id: string;
     name: string;
@@ -37,6 +41,8 @@ type EventVanDetails = {
   name: string;
   capacity: number;
   status: string;
+  perPassengerCost: number | null;
+  vanCost: number | null;
 };
 
 export const fetchQueue = async (client: SupabaseClient, vanId: string): Promise<ReservationQueue> => {
@@ -52,7 +58,7 @@ export const fetchQueue = async (client: SupabaseClient, vanId: string): Promise
 
   const { data: reservations, error: reservationsError } = await client
     .from("reservations")
-    .select("id, van_id, event_id, full_name, status, position, joined_at")
+    .select("id, van_id, event_id, full_name, status, position, joined_at, charged_amount, has_paid")
     .eq("van_id", van.id)
     .neq("status", "cancelled")
     .returns<ReservationRow[]>();
@@ -63,7 +69,7 @@ export const fetchQueue = async (client: SupabaseClient, vanId: string): Promise
 
   const { data: eventAssociation } = await client
     .from("event_vans")
-    .select("status, event:events(id, name, event_date, status, total_cost)")
+    .select("status, per_passenger_cost, van_cost, event:events(id, name, event_date, status, total_cost)")
     .eq("van_id", van.id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -75,6 +81,8 @@ export const fetchQueue = async (client: SupabaseClient, vanId: string): Promise
     type EventVanQueryRow = {
       id: string;
       status: string;
+      per_passenger_cost: string | number | null;
+      van_cost: string | number | null;
       van: {
         id: string;
         name: string;
@@ -84,7 +92,7 @@ export const fetchQueue = async (client: SupabaseClient, vanId: string): Promise
 
     const { data } = await client
       .from("event_vans")
-      .select("id, status, van:vans(id, name, capacity)")
+      .select("id, status, per_passenger_cost, van_cost, van:vans(id, name, capacity)")
       .eq("event_id", eventId);
 
     const rows = (data ?? []) as unknown as EventVanQueryRow[];
@@ -97,24 +105,52 @@ export const fetchQueue = async (client: SupabaseClient, vanId: string): Promise
               name: item.van.name,
               capacity: item.van.capacity,
               status: item.status,
+              perPassengerCost:
+                item.per_passenger_cost !== undefined && item.per_passenger_cost !== null
+                  ? Number(item.per_passenger_cost)
+                  : null,
+              vanCost:
+                item.van_cost !== undefined && item.van_cost !== null
+                  ? Number(item.van_cost)
+                  : null,
             }
           : null,
       )
       .filter((value): value is EventVanDetails => Boolean(value));
   };
 
-  if (eventAssociation?.event) {
-    const vansForEvent = await loadEventVans(eventAssociation.event.id);
+  const mapEvent = async (
+    rawEvent: { id: string; name: string; event_date: string; status: string; total_cost: number | null },
+    vanStatus: string | null,
+    vanCost: number | null,
+    perPassengerCost: number | null,
+  ) => {
+    if (!rawEvent || rawEvent.status !== "em_andamento") {
+      return null;
+    }
 
-    event = {
-      id: eventAssociation.event.id,
-      name: eventAssociation.event.name,
-      eventDate: eventAssociation.event.event_date,
-      status: eventAssociation.event.status,
-      totalCost: Number(eventAssociation.event.total_cost ?? 0),
-      vanStatus: eventAssociation.status ?? null,
+    const vansForEvent = await loadEventVans(rawEvent.id);
+
+    return {
+      id: rawEvent.id,
+      name: rawEvent.name,
+      eventDate: rawEvent.event_date,
+      status: rawEvent.status,
+      totalCost: Number(rawEvent.total_cost ?? 0),
+      vanStatus,
       vans: vansForEvent,
+      currentVanPerPassengerCost: perPassengerCost !== null ? Number(perPassengerCost) : null,
+      currentVanCost: vanCost !== null ? Number(vanCost) : null,
     };
+  };
+
+  if (eventAssociation?.event) {
+    event = await mapEvent(
+      eventAssociation.event,
+      eventAssociation.status ?? null,
+      eventAssociation.van_cost ?? null,
+      eventAssociation.per_passenger_cost ?? null,
+    );
   } else if (van.default_event_id) {
     const { data: fallbackEvent } = await client
       .from("events")
@@ -123,17 +159,7 @@ export const fetchQueue = async (client: SupabaseClient, vanId: string): Promise
       .maybeSingle();
 
     if (fallbackEvent) {
-      const vansForEvent = await loadEventVans(fallbackEvent.id);
-
-      event = {
-        id: fallbackEvent.id,
-        name: fallbackEvent.name,
-        eventDate: fallbackEvent.event_date,
-        status: fallbackEvent.status,
-        totalCost: Number(fallbackEvent.total_cost ?? 0),
-        vanStatus: null,
-        vans: vansForEvent,
-      };
+      event = await mapEvent(fallbackEvent, null, null, null);
     }
   }
 
@@ -177,7 +203,7 @@ export const ensureVanByName = async (client: SupabaseClient, options: { name: s
 export const getActiveReservationById = async (client: SupabaseClient, reservationId: string) => {
   const { data, error } = await client
     .from("reservations")
-    .select("id, van_id, event_id, full_name, status, position, joined_at")
+    .select("id, van_id, event_id, full_name, status, position, joined_at, charged_amount, has_paid")
     .eq("id", reservationId)
     .neq("status", "cancelled")
     .maybeSingle<ReservationRow>();
@@ -201,6 +227,8 @@ export const mapReservationRow = (row: ReservationRow): ReservationRecord => ({
   status: row.status,
   position: row.position,
   joinedAt: row.joined_at,
+  chargedAmount: Number(row.charged_amount ?? 0),
+  hasPaid: Boolean(row.has_paid),
 });
 
 type ReservationEventType =

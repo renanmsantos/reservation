@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  minimumFractionDigits: 2,
+});
+
 export type QueueStatus = "confirmed" | "waitlisted";
 
 export type QueueReservation = {
@@ -19,6 +25,9 @@ type QueueSectionProps = {
   highlightedName?: string | null;
   onRelease?: (reservation: QueueReservation) => void;
   releasingIds?: Set<string>;
+  releaseDisabled?: boolean;
+  releaseDisabledLabel?: string;
+  perPassengerCost?: number | null;
 };
 
 const normalize = (value: string) => value.trim().toLowerCase();
@@ -44,7 +53,17 @@ const PassengerIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-export const QueueSection = ({ title, items, emptyState, highlightedName, onRelease, releasingIds }: QueueSectionProps) => (
+export const QueueSection = ({
+  title,
+  items,
+  emptyState,
+  highlightedName,
+  onRelease,
+  releasingIds,
+  releaseDisabled = false,
+  releaseDisabledLabel,
+  perPassengerCost,
+}: QueueSectionProps) => (
   <Card className="bg-card/80 backdrop-blur">
     {title ? (
       <CardHeader className="space-y-2">
@@ -85,6 +104,11 @@ export const QueueSection = ({ title, items, emptyState, highlightedName, onRele
                   <span className="line-clamp-2 text-sm font-medium text-foreground/90">
                     {reservation.fullName}
                   </span>
+                  {perPassengerCost !== null ? (
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      {currencyFormatter.format(perPassengerCost)}
+                    </span>
+                  ) : null}
                   <Badge className="bg-primary/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-primary-foreground/80">
                     {reservation.status === "confirmed" ? "Confirmado" : "Espera"}
                   </Badge>
@@ -92,7 +116,7 @@ export const QueueSection = ({ title, items, emptyState, highlightedName, onRele
                     <Button
                       variant="outline"
                       className="flex w-full items-center justify-center gap-2 border-emerald-400/70 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-100 hover:bg-emerald-500/25"
-                      disabled={releasing}
+                      disabled={releasing || releaseDisabled}
                       onClick={() => onRelease(reservation)}
                       type="button"
                     >
@@ -110,9 +134,18 @@ export const QueueSection = ({ title, items, emptyState, highlightedName, onRele
                         <rect width="14" height="10" x="5" y="11" rx="2" />
                         <path d="M10 16h4" />
                       </svg>
-                      <span>{releasing ? "Liberando…" : "Liberar"}</span>
+                      <span>
+                        {releasing
+                          ? "Liberando…"
+                          : releaseDisabled
+                            ? releaseDisabledLabel ?? "Indisponível"
+                            : "Liberar"}
+                      </span>
                     </Button>
                   )}
+                  {releaseDisabled && !releasing && releaseDisabledLabel ? (
+                    <p className="text-[11px] text-muted-foreground">{releaseDisabledLabel}</p>
+                  ) : null}
                 </div>
               );
             })}

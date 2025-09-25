@@ -7,6 +7,7 @@ import {
   mapReservationRow,
   toPostgrestError,
 } from "@/lib/reservations-service";
+import { syncEventVanStatusWithCapacity } from "@/lib/events-service";
 import { createServiceRoleClient } from "@/lib/supabase";
 
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
@@ -27,6 +28,33 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
 
     const now = new Date().toISOString();
     const releasingWaitlisted = reservation.status === "waitlisted";
+
+    if (reservation.status === "confirmed") {
+      const statusQuery = client
+        .from("event_vans")
+        .select("status")
+        .eq("van_id", reservation.vanId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const { data: association, error: associationError } = reservation.eventId
+        ? await statusQuery.eq("event_id", reservation.eventId).maybeSingle<{ status: string }>()
+        : await statusQuery.maybeSingle<{ status: string }>();
+
+      if (associationError) {
+        throw associationError;
+      }
+
+      if (association?.status === "fechada") {
+        return NextResponse.json(
+          {
+            message: "A van está fechada. Alterações não são mais permitidas.",
+            code: "van_closed",
+          },
+          { status: 409 },
+        );
+      }
+    }
 
     if (releasingWaitlisted) {
       const deleteResult = await client
@@ -80,6 +108,8 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
       full_name: reservation.fullName,
       waitlist: false,
     });
+
+    await syncEventVanStatusWithCapacity(client, reservation.vanId);
 
     const queue = await fetchQueue(client, reservation.vanId);
 

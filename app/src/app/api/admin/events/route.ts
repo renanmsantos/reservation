@@ -16,7 +16,6 @@ type CreateEventPayload = {
   name?: string;
   date?: string;
   status?: string;
-  totalCost?: number;
 };
 
 export async function GET() {
@@ -62,17 +61,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Status do evento inválido." }, { status: 422 });
   }
 
-  if (body.totalCost !== undefined && Number(body.totalCost) < 0) {
-    return NextResponse.json({ message: "O custo total não pode ser negativo." }, { status: 422 });
-  }
-
   try {
     const client = createServiceRoleClient();
     const event = await createEvent(client, {
       name: body.name,
       eventDate: isoDate,
       status,
-      totalCost: Number(body.totalCost ?? 0),
     });
 
     return NextResponse.json({ event }, { status: 201 });

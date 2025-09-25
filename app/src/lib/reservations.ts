@@ -8,6 +8,8 @@ export type ReservationRecord = {
   status: ReservationStatus;
   position: number;
   joinedAt: string;
+  chargedAmount: number;
+  hasPaid: boolean;
 };
 
 export type ReservationQueue = {
@@ -29,7 +31,11 @@ export type ReservationQueue = {
       name: string;
       capacity: number;
       status: string;
+      perPassengerCost: number | null;
+      vanCost: number | null;
     }>;
+    currentVanPerPassengerCost: number | null;
+    currentVanCost: number | null;
   } | null;
   confirmed: ReservationRecord[];
   waitlisted: ReservationRecord[];

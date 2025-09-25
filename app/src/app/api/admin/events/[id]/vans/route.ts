@@ -7,6 +7,7 @@ import { createServiceRoleClient } from "@/lib/supabase";
 type AttachVanPayload = {
   vanId?: string;
   status?: string;
+  cost?: number;
 };
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -24,6 +25,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   if (!body?.vanId) {
     return NextResponse.json({ message: "Informe a van que deseja associar." }, { status: 400 });
+  }
+
+  if (body.cost === undefined) {
+    return NextResponse.json({ message: "Informe o custo da van." }, { status: 400 });
+  }
+
+  const parsedCost = Number(body.cost);
+  if (!Number.isFinite(parsedCost) || parsedCost < 0) {
+    return NextResponse.json({ message: "O custo deve ser um valor numérico válido." }, { status: 422 });
   }
 
   if (body.status && !isValidEventVanStatus(body.status)) {
@@ -60,6 +70,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const association = await attachVanToEvent(client, {
       eventId,
       vanId: body.vanId,
+      vanCost: parsedCost,
       status: body.status && isValidEventVanStatus(body.status) ? body.status : undefined,
     });
 

@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await client
       .from("reservations")
-      .select("id, van_id, event_id, full_name, status, position, joined_at, released_at")
+      .select("id, van_id, event_id, full_name, status, position, joined_at, released_at, charged_amount, has_paid")
       .eq("van_id", vanId)
       .order("position", { ascending: true });
 
@@ -38,6 +38,8 @@ export async function GET(request: Request) {
         status: row.status,
         position: row.position,
         joined_at: row.joined_at,
+        charged_amount: Number(row.charged_amount ?? 0),
+        has_paid: Boolean(row.has_paid),
       };
 
       return {

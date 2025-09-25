@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { DEFAULT_VAN_NAME, sanitizeFullName, type ReservationStatus } from "@/lib/reservations";
 import {
   fetchQueue,
@@ -8,14 +10,80 @@ import {
   mapReservationRow,
   toPostgrestError,
 } from "@/lib/reservations-service";
+import { syncEventVanStatusWithCapacity } from "@/lib/events-service";
 import { createServiceRoleClient } from "@/lib/supabase";
 
 const ACTIVE_STATUSES: ReservationStatus[] = ["confirmed", "waitlisted"];
 
+type VanRecord = {
+  id: string;
+  name: string;
+  capacity: number;
+  default_event_id: string | null;
+};
+
+type VanAssociation = {
+  event_id: string | null;
+  status: string;
+} | null;
+
+const resolveActiveVan = async (
+  client: SupabaseClient,
+  baseVan: VanRecord,
+): Promise<{ van: VanRecord; association: VanAssociation }> => {
+  const { data: currentAssociation, error: currentAssociationError } = await client
+    .from("event_vans")
+    .select("event_id, status")
+    .eq("van_id", baseVan.id)
+    .maybeSingle<{ event_id: string | null; status: string }>();
+
+  if (currentAssociationError) {
+    throw currentAssociationError;
+  }
+
+  if (!currentAssociation || currentAssociation.status !== "fechada" || !currentAssociation.event_id) {
+    return { van: baseVan, association: currentAssociation ?? null };
+  }
+
+  const { data: candidates, error: candidatesError } = await client
+    .from("event_vans")
+    .select(
+      "status, created_at, van:vans (id, name, capacity, default_event_id)"
+    )
+    .eq("event_id", currentAssociation.event_id)
+    .order("created_at", { ascending: true });
+
+  if (candidatesError) {
+    throw candidatesError;
+  }
+
+  const candidateList = (candidates ?? []).filter((item) => item.van && item.van.id !== baseVan.id);
+
+  const openCandidate = candidateList.find((item) => item.status === "aberta");
+  const fallbackCandidate = openCandidate ?? candidateList.find((item) => item.status === "cheia");
+
+  if (fallbackCandidate?.van) {
+    const nextVan: VanRecord = {
+      id: fallbackCandidate.van.id,
+      name: fallbackCandidate.van.name,
+      capacity: fallbackCandidate.van.capacity,
+      default_event_id: fallbackCandidate.van.default_event_id ?? null,
+    };
+
+    return {
+      van: nextVan,
+      association: { event_id: currentAssociation.event_id, status: fallbackCandidate.status },
+    };
+  }
+
+  return { van: baseVan, association: currentAssociation };
+};
+
 export async function GET() {
   try {
     const client = createServiceRoleClient();
-    const van = await ensureVanByName(client, { name: DEFAULT_VAN_NAME });
+    const baseVan = await ensureVanByName(client, { name: DEFAULT_VAN_NAME });
+    const { van } = await resolveActiveVan(client, baseVan);
     const queue = await fetchQueue(client, van.id);
     return NextResponse.json({ queue });
   } catch (error) {
@@ -47,13 +115,22 @@ export async function POST(request: Request) {
 
   try {
     const client = createServiceRoleClient();
-    const van = await ensureVanByName(client, { name: DEFAULT_VAN_NAME });
+    let van = await ensureVanByName(client, { name: DEFAULT_VAN_NAME });
 
-    const { data: eventAssociation } = await client
-      .from("event_vans")
-      .select("event_id, status")
-      .eq("van_id", van.id)
-      .maybeSingle();
+    const { van: activeVan, association: activeAssociation } = await resolveActiveVan(client, van);
+    van = activeVan;
+
+    const eventAssociation = activeAssociation;
+
+    if (!eventAssociation?.event_id && !van.default_event_id) {
+      return NextResponse.json(
+        {
+          message: "Não há eventos em andamento para reservar.",
+          code: "no_active_event",
+        },
+        { status: 409 },
+      );
+    }
 
     if (eventAssociation?.status === "fechada") {
       return NextResponse.json(
@@ -212,6 +289,8 @@ export async function POST(request: Request) {
       full_name: fullName,
       status,
     });
+
+    await syncEventVanStatusWithCapacity(client, van.id);
 
     const queue = await fetchQueue(client, van.id);
 

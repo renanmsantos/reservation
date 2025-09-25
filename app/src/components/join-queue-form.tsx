@@ -16,13 +16,19 @@ const DEFAULT_MAX_SEATS = Number(process.env.NEXT_PUBLIC_MAX_SEATS ?? 15);
 type JoinQueueFormProps = {
   onJoin: (payload: { fullName: string }) => Promise<JoinQueueResult>;
   isSubmitting: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
 };
 
-export const JoinQueueForm = ({ onJoin, isSubmitting }: JoinQueueFormProps) => {
+export const JoinQueueForm = ({ onJoin, isSubmitting, disabled = false, disabledReason }: JoinQueueFormProps) => {
   const [fullName, setFullName] = useState("");
   const { notify } = useNotifications();
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (disabled) {
+      return;
+    }
 
     const normalizedName = fullName.trim().replace(/\s+/g, " ");
     if (!normalizedName) {
@@ -75,12 +81,16 @@ export const JoinQueueForm = ({ onJoin, isSubmitting }: JoinQueueFormProps) => {
               placeholder="Alex Silva"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
+              disabled={disabled || isSubmitting}
             />
           </div>
 
-          <Button className="w-full" disabled={isSubmitting} type="submit">
-            {isSubmitting ? "Enviando…" : "Reservar"}
+          <Button className="w-full" disabled={disabled || isSubmitting} type="submit">
+            {disabled ? "Reservas encerradas" : isSubmitting ? "Enviando…" : "Reservar"}
           </Button>
+          {disabled && disabledReason ? (
+            <p className="text-xs text-muted-foreground">{disabledReason}</p>
+          ) : null}
         </form>
       </CardContent>
     </Card>

@@ -57,9 +57,25 @@ create table if not exists public.reservations (
   position integer not null,
   joined_at timestamptz not null default now(),
   released_at timestamptz,
-  charged_amount numeric(12,2) not null default 0
+  charged_amount numeric(12,2) not null default 0,
+  has_paid boolean not null default false
 );
 
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'has_paid'
+  ) then
+    alter table public.reservations
+      add column has_paid boolean not null default false;
+  end if;
+end;
+$$;
 do $$
 begin
   if not exists (
@@ -103,7 +119,8 @@ create table if not exists public.event_vans (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events(id) on delete cascade,
   van_id uuid not null references public.vans(id) on delete cascade,
-  status text not null check (status in ('aberta', 'fechada', 'em_espera')),
+  status text not null check (status in ('aberta', 'cheia', 'fechada', 'em_espera')),
+  van_cost numeric(12,2) not null default 0,
   per_passenger_cost numeric(12,2),
   closed_at timestamptz,
   created_at timestamptz not null default now(),
@@ -111,6 +128,28 @@ create table if not exists public.event_vans (
   unique(event_id, van_id)
 );
 
+
+alter table if exists public.event_vans
+  drop constraint if exists event_vans_status_check;
+
+alter table if exists public.event_vans
+  add constraint event_vans_status_check
+    check (status in ('aberta', 'cheia', 'fechada', 'em_espera'));
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'event_vans'
+      and column_name = 'van_cost'
+  ) then
+    alter table public.event_vans
+      add column van_cost numeric(12,2) not null default 0;
+  end if;
+end;
+$$;
 create index if not exists reservations_van_status_position_idx
   on public.reservations (van_id, status, position);
 

@@ -17,6 +17,7 @@ const createEventMock = vi.hoisted(() => vi.fn());
 const updateEventMock = vi.hoisted(() => vi.fn());
 const attachVanToEventMock = vi.hoisted(() => vi.fn());
 const updateEventVanStatusMock = vi.hoisted(() => vi.fn());
+const updateEventVanCostMock = vi.hoisted(() => vi.fn());
 const getEventByIdMock = vi.hoisted(() => vi.fn());
 const detachVanFromEventMock = vi.hoisted(() => vi.fn());
 
@@ -29,6 +30,7 @@ vi.mock("@/lib/events-service", async () => {
     updateEvent: updateEventMock,
     attachVanToEvent: attachVanToEventMock,
     updateEventVanStatus: updateEventVanStatusMock,
+    updateEventVanCost: updateEventVanCostMock,
     getEventById: getEventByIdMock,
     detachVanFromEvent: detachVanFromEventMock,
   };
@@ -47,6 +49,7 @@ describe("Admin Events API", () => {
     updateEventMock.mockReset();
     attachVanToEventMock.mockReset();
     updateEventVanStatusMock.mockReset();
+    updateEventVanCostMock.mockReset();
     getEventByIdMock.mockReset();
     detachVanFromEventMock.mockReset();
     createServiceRoleClientMock.mockReset();
@@ -87,7 +90,6 @@ describe("Admin Events API", () => {
       body: JSON.stringify({
         name: "Excursão",
         date: "10/12/2025",
-        totalCost: 500,
       }),
     });
 
@@ -99,7 +101,6 @@ describe("Admin Events API", () => {
       name: "Excursão",
       eventDate: "2025-12-10",
       status: "planejado",
-      totalCost: 500,
     });
     expect(payload.event.id).toBe("event-1");
   });
@@ -192,7 +193,7 @@ describe("Admin Events API", () => {
 
     const request = new Request("http://localhost", {
       method: "PATCH",
-      body: JSON.stringify({ totalCost: 1000 }),
+      body: JSON.stringify({ name: "Evento atualizado" }),
     });
 
     const response = await updateEventRoute(request, { params: Promise.resolve({ id: "event-1" }) });
@@ -228,7 +229,7 @@ describe("Admin Events API", () => {
 
     const request = new Request("http://localhost", {
       method: "POST",
-      body: JSON.stringify({ vanId: "van-1" }),
+      body: JSON.stringify({ vanId: "van-1", cost: 1200 }),
     });
 
     const response = await attachVanRoute(request, { params: Promise.resolve({ id: "event-1" }) });
@@ -238,6 +239,7 @@ describe("Admin Events API", () => {
     expect(attachVanToEventMock).toHaveBeenCalledWith(mockClient, expect.objectContaining({
       eventId: "event-1",
       vanId: "van-1",
+      vanCost: 1200,
     }));
     expect(payload.association.id).toBe("assoc-1");
   });
@@ -253,7 +255,7 @@ describe("Admin Events API", () => {
 
     const request = new Request("http://localhost", {
       method: "POST",
-      body: JSON.stringify({ vanId: "van-1" }),
+      body: JSON.stringify({ vanId: "van-1", cost: 1200 }),
     });
 
     const response = await attachVanRoute(request, { params: Promise.resolve({ id: "event-1" }) });
@@ -282,6 +284,7 @@ describe("Admin Events API", () => {
       vanId: "van-1",
       nextStatus: "fechada",
     });
+    expect(updateEventVanCostMock).not.toHaveBeenCalled();
     expect(payload.association.status).toBe("fechada");
   });
 
@@ -299,10 +302,35 @@ describe("Admin Events API", () => {
     expect(updateEventVanStatusMock).not.toHaveBeenCalled();
   });
 
+  it("atualiza custo da van", async () => {
+    const mockClient = {};
+    createServiceRoleClientMock.mockReturnValue(mockClient);
+    updateEventVanCostMock.mockResolvedValue({ id: "assoc-1", van_cost: 1500 });
+
+    const request = new Request("http://localhost", {
+      method: "PATCH",
+      body: JSON.stringify({ cost: 1500 }),
+    });
+
+    const response = await updateEventVanRoute(request, {
+      params: Promise.resolve({ id: "event-1", vanId: "van-1" }),
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(updateEventVanCostMock).toHaveBeenCalledWith(mockClient, {
+      eventId: "event-1",
+      vanId: "van-1",
+      vanCost: 1500,
+    });
+    expect(updateEventVanStatusMock).not.toHaveBeenCalled();
+    expect(payload.association).toBeDefined();
+  });
+
   it("remove van associada a evento", async () => {
     const maybeSingleEvent = vi.fn().mockResolvedValue({ data: { status: "em_andamento" }, error: null });
     const mockClient = {
-      from: vi.fn((table: string) => ({
+      from: vi.fn(() => ({
         select: vi.fn(() => ({
           eq: vi.fn(() => ({ maybeSingle: maybeSingleEvent })),
         })),
