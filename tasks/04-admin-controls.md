@@ -1,4 +1,4 @@
-# Task 04 – Admin Configuration & Roster Export
+# Task 04 – Admin Configuration & Roster Export (DONE)
 
 ## Objective
 Provide light admin tooling to adjust van capacity, monitor demand, manage duplicate-name overrides, and export rider lists without redeploying code.

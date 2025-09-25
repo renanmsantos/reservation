@@ -1,4 +1,4 @@
-# Task 01 – Project & Infrastructure Setup
+# Task 01 – Project & Infrastructure Setup (DONE)
 
 ## Objective
 Establish the initial Next.js codebase, connect Supabase, and deliver a clickable UI skeleton that mirrors the reservation flow while enforcing the single-reservation-per-name rule.

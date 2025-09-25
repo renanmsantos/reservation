@@ -1,4 +1,4 @@
-# Task 03 – Seat Release & Waitlist Promotion
+# Task 03 – Seat Release & Waitlist Promotion (DONE)
 
 ## Objective
 Allow passengers to relinquish their seat and automatically advance the next participant in line, keeping the UI and data consistent while unlocking the ability for that name to book again.

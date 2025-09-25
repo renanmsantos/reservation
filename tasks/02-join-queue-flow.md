@@ -1,4 +1,4 @@
-# Task 02 – Passenger Join Flow
+# Task 02 – Passenger Join Flow (DONE)
 
 ## Objective
 Implement the end-to-end path for a passenger to claim a seat or join the waitlist, from form submission to persistence and UI refresh, enforcing that each full name holds only one active reservation system-wide.

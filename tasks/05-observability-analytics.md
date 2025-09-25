@@ -1,4 +1,4 @@
-# Task 05 – Observability & Post-Launch Enhancements
+# Task 05 – Observability & Post-Launch Enhancements (DONE)
 
 ## Objective
 Add lightweight monitoring, analytics, and roadmap features that support ongoing optimization without increasing infra cost, including visibility into duplicate-name attempts.

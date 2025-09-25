@@ -1,4 +1,4 @@
-# Task 06 – CI/CD Pipeline Automation
+# Task 06 – CI/CD Pipeline Automation (DONE)
 
 ## Objective
 Establish continuous integration and delivery using GitHub Actions so every push validates the Next.js app, applies migrations safely, and publishes preview deployments to Vercel.
