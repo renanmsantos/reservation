@@ -7,7 +7,6 @@ import type { ReservationQueue, ReservationStatus } from "@/lib/reservations";
 
 type JoinPayload = {
   fullName: string;
-  email?: string;
 };
 
 export type JoinQueueResult = {
@@ -53,7 +52,7 @@ export const useReservationQueue = () => {
       const payload = (await response.json().catch(() => null)) as { queue?: ReservationQueue; message?: string } | null;
 
       if (!response.ok || !payload?.queue) {
-        throw new Error(payload?.message ?? "Failed to load queue.");
+        throw new Error(payload?.message ?? "Não foi possível carregar a fila.");
       }
 
       setState({ data: payload.queue, loading: false, error: null });
@@ -61,13 +60,13 @@ export const useReservationQueue = () => {
       setState((previous) => ({
         data: previous.data,
         loading: false,
-        error: error instanceof Error ? error.message : "Failed to load queue.",
+        error: error instanceof Error ? error.message : "Não foi possível carregar a fila.",
       }));
     }
   }, []);
 
   const joinQueue = useCallback(
-    async ({ fullName, email }: JoinPayload): Promise<JoinQueueResult> => {
+    async ({ fullName }: JoinPayload): Promise<JoinQueueResult> => {
       setIsSubmitting(true);
       setHighlightFullName(null);
 
@@ -77,13 +76,13 @@ export const useReservationQueue = () => {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ fullName, email }),
+          body: JSON.stringify({ fullName }),
         });
 
         const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          const message = typeof payload.message === "string" ? payload.message : "Failed to reserve a seat.";
+          const message = typeof payload.message === "string" ? payload.message : "Não foi possível reservar uma vaga.";
           const result: JoinQueueResult = {
             ok: false,
             message,
@@ -108,13 +107,13 @@ export const useReservationQueue = () => {
         return {
           ok: true,
           status: payload.status,
-          message: payload.message ?? "Reservation recorded.",
+          message: payload.message ?? "Reserva registrada.",
           highlightFullName: fullName,
         };
       } catch (error) {
         return {
           ok: false,
-          message: error instanceof Error ? error.message : "Failed to reserve a seat.",
+          message: error instanceof Error ? error.message : "Não foi possível reservar uma vaga.",
           code: "network_error",
         };
       } finally {
@@ -139,7 +138,7 @@ export const useReservationQueue = () => {
         const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          const message = typeof payload.message === "string" ? payload.message : "Failed to release the seat.";
+          const message = typeof payload.message === "string" ? payload.message : "Não foi possível liberar a vaga.";
           return { ok: false, message, code: payload.code };
         }
 
@@ -148,11 +147,11 @@ export const useReservationQueue = () => {
           setState({ data: queue, loading: false, error: null });
         }
 
-        return { ok: true, message: payload.message ?? "Reservation released." };
+        return { ok: true, message: payload.message ?? "Reserva liberada." };
       } catch (error) {
         return {
           ok: false,
-          message: error instanceof Error ? error.message : "Failed to release the seat.",
+          message: error instanceof Error ? error.message : "Não foi possível liberar a vaga.",
           code: "network_error",
         };
       } finally {

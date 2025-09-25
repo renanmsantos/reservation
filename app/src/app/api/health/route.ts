@@ -7,7 +7,7 @@ import { createServiceRoleClient } from "@/lib/supabase";
 export const runtime = "nodejs";
 
 const HEALTH_VAN_NAME = "__health_check_van";
-const HEALTH_RESERVATION_NAME = "Health Check Passenger";
+const HEALTH_RESERVATION_NAME = "Passageiro Teste de Saúde";
 
 type HealthStatus =
   | {
@@ -36,7 +36,7 @@ export async function GET() {
       hasAnonKey,
       duplicateNameCheck: "skipped",
       error:
-        "Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable Supabase connectivity.",
+        "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para habilitar a conexão com o Supabase.",
     };
 
     return NextResponse.json(payload, { status: 500 });
@@ -50,7 +50,7 @@ export async function GET() {
       supabaseUrl,
       hasAnonKey,
       duplicateNameCheck: "skipped",
-      error: "SUPABASE_SERVICE_ROLE_KEY is not configured; duplicate-name validation skipped.",
+      error: "SUPABASE_SERVICE_ROLE_KEY não está configurada; validação de nomes duplicados ignorada.",
     };
 
     return NextResponse.json(payload, { status: 200 });
@@ -76,7 +76,6 @@ export async function GET() {
     const firstInsert = await client.from("reservations").insert({
       van_id: vanId,
       full_name: HEALTH_RESERVATION_NAME,
-      email: null,
       status: "confirmed",
       position: 1,
     });
@@ -88,17 +87,16 @@ export async function GET() {
     const duplicateInsert = await client.from("reservations").insert({
       van_id: vanId,
       full_name: HEALTH_RESERVATION_NAME,
-      email: null,
       status: "waitlisted",
       position: 2,
     });
 
     if (!duplicateInsert.error) {
-      throw new Error("Duplicate name insertion unexpectedly succeeded.");
+      throw new Error("A inserção com nome duplicado inesperadamente funcionou.");
     }
 
     if (duplicateInsert.error.code !== "23505") {
-      throw new Error(`Unexpected error code when checking duplicates: ${duplicateInsert.error.code ?? "unknown"}`);
+      throw new Error(`Código de erro inesperado ao verificar duplicados: ${duplicateInsert.error.code ?? "unknown"}`);
     }
 
     const payload: HealthStatus = {
@@ -115,7 +113,7 @@ export async function GET() {
       supabaseUrl,
       hasAnonKey,
       duplicateNameCheck: "failed",
-      error: error instanceof Error ? error.message : "Unexpected Supabase error",
+      error: error instanceof Error ? error.message : "Erro inesperado do Supabase",
     };
 
     return NextResponse.json(payload, { status: 500 });

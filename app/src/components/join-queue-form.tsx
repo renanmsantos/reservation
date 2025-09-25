@@ -2,46 +2,43 @@
 
 import { FormEvent, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useNotifications } from "@/components/ui/notifications-provider";
 import { trackEvent } from "@/lib/analytics";
 
 import type { JoinQueueResult } from "@/hooks/use-reservation-queue";
 
 const DEFAULT_MAX_SEATS = Number(process.env.NEXT_PUBLIC_MAX_SEATS ?? 15);
 
-type MessageState = {
-  tone: "success" | "error";
-  text: string;
-};
-
 type JoinQueueFormProps = {
-  onJoin: (payload: { fullName: string; email?: string }) => Promise<JoinQueueResult>;
+  onJoin: (payload: { fullName: string }) => Promise<JoinQueueResult>;
   isSubmitting: boolean;
 };
 
 export const JoinQueueForm = ({ onJoin, isSubmitting }: JoinQueueFormProps) => {
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [message, setMessage] = useState<MessageState | null>(null);
-
+  const { notify } = useNotifications();
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const normalizedName = fullName.trim().replace(/\s+/g, " ");
     if (!normalizedName) {
-      setMessage({ tone: "error", text: "Please provide your full name to reserve a seat." });
+      notify({ tone: "error", message: "Informe seu nome completo para reservar uma vaga." });
       return;
     }
 
-    const result = await onJoin({ fullName: normalizedName, email: email.trim() || undefined });
+    const result = await onJoin({ fullName: normalizedName });
 
     if (result.ok) {
       trackEvent("reservation_joined", {
         status: result.status ?? "unknown",
         duplicate_override: result.code === "override_applied",
       });
-      setMessage({ tone: "success", text: result.message });
+      notify({ tone: "success", message: result.message });
       setFullName("");
-      setEmail("");
       return;
     }
 
@@ -55,77 +52,38 @@ export const JoinQueueForm = ({ onJoin, isSubmitting }: JoinQueueFormProps) => {
       });
     }
 
-    setMessage({ tone: "error", text: result.message });
+    notify({ tone: "error", message: result.message });
   };
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <header className="space-y-1">
-        <h2 className="text-lg font-semibold text-slate-900">Join the Next Van</h2>
-        <p className="text-sm text-slate-500">
-          Seats are allocated first-come, first-served up to {DEFAULT_MAX_SEATS} passengers. Each full name can
-          hold only one active reservation across all vans.
-        </p>
-      </header>
+    <Card className="bg-card/80 backdrop-blur">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg font-semibold text-foreground">Reservar vaga</CardTitle>
+        <CardDescription className="text-xs text-muted-foreground">
+          Digite apenas o nome completo. {DEFAULT_MAX_SEATS} lugares no total.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-3" onSubmit={handleSubmit}>
+          <div className="space-y-2">
+            <Label className="text-xs uppercase tracking-[0.2em] text-muted-foreground/80" htmlFor="fullName">
+              Nome completo
+            </Label>
+            <Input
+              id="fullName"
+              name="fullName"
+              placeholder="Alex Silva"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+            />
+          </div>
 
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="fullName">
-            Full name
-          </label>
-          <input
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-            id="fullName"
-            name="fullName"
-            placeholder="Alex Johnson"
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="email">
-            Email (optional)
-          </label>
-          <input
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-            id="email"
-            name="email"
-            placeholder="alex@email.com"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </div>
-
-        <button
-          className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:cursor-not-allowed disabled:opacity-70"
-          disabled={isSubmitting}
-          type="submit"
-        >
-          {isSubmitting ? "Submitting…" : "Reserve my seat"}
-        </button>
-      </form>
-
-      <div className="space-y-2 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900">
-        <p>Reservation basics:</p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>One seat per full name at a time—release your spot to rejoin later.</li>
-          <li>Waitlisted riders promote automatically when a seat opens.</li>
-          <li>Admins can approve legitimate duplicate names in special cases.</li>
-        </ul>
-      </div>
-
-      {message && (
-        <p
-          className={`text-sm ${
-            message.tone === "success" ? "text-emerald-700" : "text-rose-700"
-          }`}
-        >
-          {message.text}
-        </p>
-      )}
-    </section>
+          <Button className="w-full" disabled={isSubmitting} type="submit">
+            {isSubmitting ? "Enviando…" : "Reservar"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 };
 

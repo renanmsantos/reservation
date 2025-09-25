@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 
-import { mapReservationRow } from "@/lib/reservations-service";
+import { isAdminAuthenticated } from "@/lib/auth";
+import { mapReservationRow, type ReservationRow } from "@/lib/reservations-service";
 import { createServiceRoleClient } from "@/lib/supabase";
 
 export async function GET(request: Request) {
+  if (!(await isAdminAuthenticated())) {
+    return NextResponse.json({ message: "Acesso não autorizado." }, { status: 401 });
+  }
   const url = new URL(request.url);
   const vanId = url.searchParams.get("vanId");
   const status = url.searchParams.get("status");
 
   if (!vanId) {
-    return NextResponse.json({ message: "vanId is required." }, { status: 400 });
+    return NextResponse.json({ message: "É obrigatório informar o vanId." }, { status: 400 });
   }
 
   try {
@@ -17,7 +21,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await client
       .from("reservations")
-      .select("id, van_id, full_name, email, status, position, joined_at, released_at")
+      .select("id, van_id, event_id, full_name, status, position, joined_at, released_at")
       .eq("van_id", vanId)
       .order("position", { ascending: true });
 
@@ -25,10 +29,22 @@ export async function GET(request: Request) {
       throw error;
     }
 
-    const normalized = (data ?? []).map((row) => ({
-      ...mapReservationRow(row),
-      releasedAt: (row as { released_at?: string | null }).released_at ?? null,
-    }));
+    const normalized = (data ?? []).map((row) => {
+      const mappedRow: ReservationRow = {
+        id: row.id,
+        van_id: row.van_id,
+        event_id: row.event_id ?? null,
+        full_name: row.full_name,
+        status: row.status,
+        position: row.position,
+        joined_at: row.joined_at,
+      };
+
+      return {
+        ...mapReservationRow(mappedRow),
+        releasedAt: row.released_at ?? null,
+      };
+    });
 
     const filtered = status ? normalized.filter((item) => item.status === status) : normalized;
 
@@ -36,7 +52,7 @@ export async function GET(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        message: error instanceof Error ? error.message : "Failed to load reservations.",
+        message: error instanceof Error ? error.message : "Não foi possível carregar as reservas.",
       },
       { status: 500 },
     );

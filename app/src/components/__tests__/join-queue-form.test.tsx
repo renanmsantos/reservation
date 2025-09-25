@@ -1,57 +1,59 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import JoinQueueForm from "@/components/join-queue-form";
+import { NotificationsProvider } from "@/components/ui/notifications-provider";
 
 const resolveAfter = <T,>(value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), 0));
+
+const Wrapper = ({ children }: { children: ReactNode }) => <NotificationsProvider>{children}</NotificationsProvider>;
 
 describe("JoinQueueForm", () => {
   it("requires a full name before submitting", async () => {
     const onJoin = vi.fn();
 
-    render(<JoinQueueForm isSubmitting={false} onJoin={onJoin} />);
+    render(<JoinQueueForm isSubmitting={false} onJoin={onJoin} />, { wrapper: Wrapper });
 
-    await userEvent.click(screen.getByRole("button", { name: /reserve my seat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /reservar/i }));
 
-    expect(await screen.findByText(/please provide your full name/i)).toBeInTheDocument();
+    expect(await screen.findByText(/informe seu nome completo/i)).toBeInTheDocument();
     expect(onJoin).not.toHaveBeenCalled();
   });
 
   it("shows success message and clears the form on successful join", async () => {
     const onJoin = vi
       .fn()
-      .mockImplementation(() => resolveAfter({ ok: true, message: "Seat confirmed!", status: "confirmed" }));
+      .mockImplementation(() => resolveAfter({ ok: true, message: "Vaga confirmada!", status: "confirmed" }));
 
-    render(<JoinQueueForm isSubmitting={false} onJoin={onJoin} />);
+    render(<JoinQueueForm isSubmitting={false} onJoin={onJoin} />, { wrapper: Wrapper });
 
-    await userEvent.type(screen.getByLabelText(/full name/i), "Taylor Swift");
-    await userEvent.type(screen.getByLabelText(/email/i), "taylor@example.com");
-    await userEvent.click(screen.getByRole("button", { name: /reserve my seat/i }));
+    await userEvent.type(screen.getByLabelText(/nome completo/i), "Taylor Swift");
+    await userEvent.click(screen.getByRole("button", { name: /reservar/i }));
 
-    expect(onJoin).toHaveBeenCalledWith({ email: "taylor@example.com", fullName: "Taylor Swift" });
-    expect(await screen.findByText(/seat confirmed!/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/full name/i)).toHaveValue("");
-    expect(screen.getByLabelText(/email/i)).toHaveValue("");
+    expect(onJoin).toHaveBeenCalledWith({ fullName: "Taylor Swift" });
+    expect(await screen.findByText(/vaga confirmada!/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/nome completo/i)).toHaveValue("");
   });
 
   it("surfaces duplicate errors inline", async () => {
     const onJoin = vi.fn().mockImplementation(() =>
       resolveAfter({
         ok: false,
-        message: "This full name already holds an active reservation.",
+        message: "Este nome completo já possui uma reserva ativa.",
         code: "duplicate_name",
       }),
     );
 
-    render(<JoinQueueForm isSubmitting={false} onJoin={onJoin} />);
+    render(<JoinQueueForm isSubmitting={false} onJoin={onJoin} />, { wrapper: Wrapper });
 
-    await userEvent.type(screen.getByLabelText(/full name/i), "Jordan Carter");
-    await userEvent.click(screen.getByRole("button", { name: /reserve my seat/i }));
+    await userEvent.type(screen.getByLabelText(/nome completo/i), "Jordan Carter");
+    await userEvent.click(screen.getByRole("button", { name: /reservar/i }));
 
-    expect(onJoin).toHaveBeenCalledWith({ email: undefined, fullName: "Jordan Carter" });
+    expect(onJoin).toHaveBeenCalledWith({ fullName: "Jordan Carter" });
     expect(
-      await screen.findByText(/this full name already holds an active reservation/i),
+      await screen.findByText(/este nome completo já possui uma reserva ativa/i),
     ).toBeInTheDocument();
   });
 });

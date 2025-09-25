@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 
 import "./globals.css";
+import { NotificationsProvider } from "@/components/ui/notifications-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,8 +18,8 @@ const geistMono = Geist_Mono({
 const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN;
 
 export const metadata: Metadata = {
-  title: "Van Reservation Queue",
-  description: "Manage van reservations, waitlists, and duplicates with Supabase + Next.js",
+  title: "Fila de reservas da van",
+  description: "Gerencie reservas, listas de espera e exceções com Supabase + Next.js",
 };
 
 export default function RootLayout({
@@ -27,8 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    <html lang="pt-BR">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen`}>
         {plausibleDomain ? (
           <Script
             data-domain={plausibleDomain}
@@ -36,7 +37,7 @@ export default function RootLayout({
             strategy="afterInteractive"
           />
         ) : null}
-        {children}
+        <NotificationsProvider>{children}</NotificationsProvider>
       </body>
     </html>
   );

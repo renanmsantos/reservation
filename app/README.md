@@ -29,6 +29,7 @@ Van reservation queue MVP built with Next.js App Router, Tailwind CSS, and Supab
 ## Available Scripts
 - `npm run dev` – start the Next.js dev server with Turbopack
 - `npm run db:apply` – apply `supabase/schema.sql` to the configured Supabase instance using `SUPABASE_DB_URL`.
+- `npm run db:seed:events` – garante o evento padrão e associa vans/reservas existentes após aplicar o schema.
 - `npm run build` – generate an optimized production build.
 - `npm start` – run the compiled build locally.
 - `npm run lint` – lint the project with ESLint + Prettier settings.
@@ -73,10 +74,31 @@ Van reservation queue MVP built with Next.js App Router, Tailwind CSS, and Supab
 - Sample HTTP requests for manual QA (including duplicate check) live in `docs/reservations.http`.
 
 ## Admin Dashboard
-- Access `/admin` (and the `/api/admin/*` endpoints) via HTTP basic auth using `ADMIN_USERNAME` / `ADMIN_PASSWORD` defined in `.env.local`.
-- From the dashboard you can adjust van capacity, review active/waitlisted riders, approve duplicate-name overrides (with optional expiry windows), export CSV rosters, and inspect the audit log.
-- Capacity updates, overrides, and reservation lifecycle events emit records to the `reservation_events` table for historical review.
-- To validate access control, open `/admin` in an incognito window without credentials—expect `401` with a basic-auth challenge. Provide the configured username/password to continue.
+- Configure `ADMIN_ACCESS_TOKEN` in `.env.local` para definir a senha única de acesso administrativo.
+- Faça login via `/admin/login`; ao validar a senha, um cookie de sessão (8 horas) libera `/admin` e todos os endpoints `/api/admin/*`.
+- O painel permite ajustar vans, acompanhar confirmados/espera, liberar assentos, criar exceções de nome, exportar CSVs e gerenciar eventos (data, status e custo total).
+- Para encerrar a sessão, use o botão **Sair** no topo do painel ou exclua o cookie `admin_session`.
+
+## Gestão de eventos
+- Execute `npm run db:apply` seguido de `npm run db:seed:events` após subir o schema para criar o evento padrão "Evento Padrão" e vincular vans/reservas legadas.
+- Eventos possuem status sequenciais: `planejado → em andamento → finalizado`. Após finalização, alterações são bloqueadas pelo backend.
+- Cada van vinculada a um evento tem status próprio (`aberta`, `em espera`, `fechada`). Ao fechar uma van, o custo total do evento é automaticamente rateado entre os passageiros confirmados e persistido em `reservations.charged_amount`.
+- Use a UI administrativa para anexar ou desassociar vans de um evento, alterar status com um clique e visualizar o custo por passageiro (exibido em BRL) quando a van estiver fechada.
+- Para redesplegar com base limpa, remova dados antigos, aplique o schema e rode novamente `npm run db:seed:events` antes de reabrir o painel.
+
+## Limpeza rápida do banco de dados
+Precisa começar uma rodada do zero? Rode a seguinte rotina SQL no painel do Supabase (Query, SQL Editor) ou via CLI conectado ao seu banco:
+
+```sql
+delete from reservations;
+delete from duplicate_name_overrides;
+delete from reservation_events;
+```
+
+- As linhas em `reservations` e `duplicate_name_overrides` são removidas, liberando filas e exceções existentes.
+- A tabela `reservation_events` é opcional, mas limpar ajuda a manter o histórico consistente com a nova rodada.
+- Se quiser derrubar vans de testes, execute também `delete from vans where name != 'Van Principal';` — mantenha ao menos uma van ativa para não quebrar a API.
+- Após a limpeza, atualize o painel administrativo (`/admin`) para confirmar que as listas voltaram a ficar vazias.
 
 ## Observability & Reporting
 - Optional Plausible analytics: set `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` and redeploy to enable event tracking for joins, duplicate rejections, and releases (`src/lib/analytics.ts`).

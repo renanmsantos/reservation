@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isAdminAuthenticated } from "@/lib/auth";
 import { createServiceRoleClient } from "@/lib/supabase";
 
 const escapeCsvValue = (value: unknown) => {
@@ -16,18 +17,21 @@ const escapeCsvValue = (value: unknown) => {
 };
 
 export async function GET(request: Request) {
+  if (!(await isAdminAuthenticated())) {
+    return NextResponse.json({ message: "Acesso não autorizado." }, { status: 401 });
+  }
   const url = new URL(request.url);
   const vanId = url.searchParams.get("vanId");
 
   if (!vanId) {
-    return NextResponse.json({ message: "vanId is required." }, { status: 400 });
+    return NextResponse.json({ message: "É obrigatório informar o vanId." }, { status: 400 });
   }
 
   try {
     const client = createServiceRoleClient();
     const { data: reservations, error } = await client
       .from("reservations")
-      .select("full_name, email, status, position, joined_at, released_at")
+      .select("full_name, status, position, joined_at, released_at")
       .eq("van_id", vanId)
       .order("position", { ascending: true });
 
@@ -36,10 +40,9 @@ export async function GET(request: Request) {
     }
 
     const rows = [
-      ["Full Name", "Email", "Status", "Position", "Joined At", "Released At"],
+      ["Nome completo", "Status", "Posição", "Entrada em", "Liberação em"],
       ...(reservations ?? []).map((row) => [
         row.full_name,
-        row.email,
         row.status,
         row.position,
         row.joined_at,
@@ -58,7 +61,7 @@ export async function GET(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        message: error instanceof Error ? error.message : "Failed to export reservations.",
+        message: error instanceof Error ? error.message : "Não foi possível exportar as reservas.",
       },
       { status: 500 },
     );

@@ -1,28 +1,61 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import JoinQueueForm from "@/components/join-queue-form";
 import { QueueSection, type QueueReservation } from "@/components/queue-section";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { useNotifications } from "@/components/ui/notifications-provider";
 import { useReservationQueue } from "@/hooks/use-reservation-queue";
 import { trackEvent } from "@/lib/analytics";
 
+const EVENT_STATUS_LABELS: Record<string, string> = {
+  planejado: "Planejado",
+  em_andamento: "Em andamento",
+  finalizado: "Finalizado",
+};
+
+const VAN_STATUS_LABELS: Record<string, string> = {
+  aberta: "Aberta",
+  fechada: "Fechada",
+  em_espera: "Em espera",
+};
+
+const formatEventDate = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+};
+
 const LoadingState = () => (
-  <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-12 text-slate-500">
-    Loading reservation queue...
-  </div>
+  <Card className="bg-card/60 backdrop-blur">
+    <CardContent className="flex h-48 items-center justify-center text-muted-foreground">Carregando…</CardContent>
+  </Card>
 );
 
 const ErrorState = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
-  <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-rose-200 bg-rose-50 p-12 text-rose-800">
-    <p>{message}</p>
-    <button
-      className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-rose-700"
-      onClick={onRetry}
-      type="button"
-    >
-      Try again
-    </button>
+  <Card className="border border-rose-500/30 bg-rose-500/10 text-rose-200">
+    <CardContent className="flex h-48 flex-col items-center justify-center space-y-4 text-center">
+      <p className="text-sm font-medium">{message}</p>
+      <Button variant="destructive" onClick={onRetry} type="button">
+        Tentar novamente
+      </Button>
+    </CardContent>
+  </Card>
+);
+
+const SummaryTile = ({ title, value }: { title: string; value: string }) => (
+  <div className="rounded-xl border border-border/60 bg-card/80 p-4">
+    <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground/80">{title}</p>
+    <p className="text-2xl font-semibold text-foreground">{value}</p>
   </div>
 );
 
@@ -37,8 +70,10 @@ export const ReservationDashboard = () => {
     highlightFullName,
     releaseReservation,
     releasingIds,
+    confirmedCount,
+    waitlistCount,
   } = useReservationQueue();
-  const [releaseMessage, setReleaseMessage] = useState<string | null>(null);
+  const { notify } = useNotifications();
 
   const confirmed = useMemo(
     () =>
@@ -66,24 +101,25 @@ export const ReservationDashboard = () => {
     [queue],
   );
 
+  const capacity = queue?.van.capacity ?? 0;
+  const availableSeats = Math.max(capacity - confirmedCount, 0);
+  const occupancy = capacity ? Math.round((confirmedCount / capacity) * 100) : 0;
+
   const handleRelease = async (reservation: QueueReservation) => {
-    const confirmedRelease = window.confirm(
-      `Release ${reservation.fullName}? They will lose their current spot and need to join again if plans change.`,
-    );
-    if (!confirmedRelease) {
+    if (!window.confirm(`Liberar ${reservation.fullName}?`)) {
       return;
     }
 
-    setReleaseMessage(null);
     const result = await releaseReservation(reservation.id);
-    setReleaseMessage(result.message);
 
     if (result.ok) {
+      notify({ tone: "success", message: result.message });
       trackEvent("reservation_released", {
         van_id: queue?.van.id ?? "unknown",
         full_name: reservation.fullName,
       });
     } else {
+      notify({ tone: "error", message: result.message });
       trackEvent("reservation_release_error", {
         van_id: queue?.van.id ?? "unknown",
         code: result.code ?? "unknown",
@@ -91,50 +127,101 @@ export const ReservationDashboard = () => {
     }
   };
 
-  return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 pt-12 md:flex-row">
-      <div className="flex-1 space-y-6">
-        <header className="space-y-2">
-          <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Van Reservation Queue</p>
-          <h1 className="text-3xl font-bold text-slate-900">Reserve your spot for the next ride</h1>
-          <p className="text-base text-slate-600">
-            Seats are assigned in order of arrival. Each rider can hold only one active reservation per full name—release
-            your seat if plans change so the next person advances automatically.
-          </p>
-        </header>
+  const eventInfo = queue?.event;
+  const eventStatusLabel = eventInfo ? EVENT_STATUS_LABELS[eventInfo.status] ?? eventInfo.status : null;
+  const vanStatusLabel = eventInfo?.vanStatus ? VAN_STATUS_LABELS[eventInfo.vanStatus] ?? eventInfo.vanStatus : null;
 
-        {loading && !queue && <LoadingState />}
-        {error && !queue && <ErrorState message={error} onRetry={() => refetch()} />}
+  return (
+    <div className="relative mx-auto w-full max-w-6xl space-y-10 px-4 pb-24 pt-12">
+      <header className="space-y-3 text-foreground">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="bg-primary/20 text-primary-foreground/90">
+            {eventStatusLabel ?? "Fila"}
+          </Badge>
+          {vanStatusLabel && (
+            <Badge className="border-primary/40 bg-transparent text-primary/80">
+              Van {vanStatusLabel}
+            </Badge>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+            {eventInfo?.name ?? "Status da fila"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {eventInfo
+              ? `${formatEventDate(eventInfo.eventDate)} · ${capacity} lugares · ${availableSeats} vagas disponíveis`
+              : "Acompanhe a fila em tempo real e reserve sua vaga."}
+          </p>
+        </div>
+      </header>
+
+      <section className="space-y-6">
+        <JoinQueueForm onJoin={joinQueue} isSubmitting={isSubmitting} />
 
         {queue && (
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryTile title="Confirmados" value={String(confirmedCount)} />
+            <SummaryTile title="Fila" value={String(waitlistCount)} />
+            <SummaryTile title="Vagas" value={String(availableSeats)} />
+            <SummaryTile title="Lotação" value={`${occupancy}%`} />
+          </div>
+        )}
+      </section>
+
+      {loading && !queue && <LoadingState />}
+      {error && !queue && <ErrorState message={error} onRetry={() => refetch()} />}
+
+      {queue && (
+        <div className="space-y-10">
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">Confirmados</h2>
             <QueueSection
-              emptyState="No one has joined yet. Be the first to claim a seat."
+              emptyState="Ninguém confirmado ainda."
               highlightedName={highlightFullName}
               releasingIds={releasingIds}
               onRelease={handleRelease}
               items={confirmed}
-              title="Confirmed passengers"
+              title={null}
             />
+          </section>
+
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">Lista de espera</h2>
             <QueueSection
-              emptyState="There are currently no riders waiting."
+              emptyState="Sem fila no momento."
               highlightedName={highlightFullName}
               releasingIds={releasingIds}
               onRelease={handleRelease}
               items={waitlisted}
-              title="Waitlist"
+              title={null}
             />
-          </div>
-        )}
-      </div>
+          </section>
 
-      <div className="md:w-96">
-        <JoinQueueForm onJoin={joinQueue} isSubmitting={isSubmitting} />
+          {eventInfo?.vans?.length ? (
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground/80">
+                Vans deste evento
+              </h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {eventInfo.vans.map((van) => (
+                  <div
+                    key={van.id}
+                    className="rounded-xl border border-border/50 bg-background/60 p-4 shadow-sm"
+                  >
+                    <p className="text-sm font-semibold text-foreground">{van.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {van.capacity} lugares · Status {VAN_STATUS_LABELS[van.status] ?? van.status}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-        {releaseMessage && (
-          <p className="mt-4 text-sm text-slate-600">{releaseMessage}</p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

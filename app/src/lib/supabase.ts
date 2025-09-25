@@ -9,7 +9,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const createSupabaseClient = (key: string) => {
   if (!supabaseUrl || !key) {
-    throw new Error("Supabase environment variables are not configured.");
+    throw new Error("As variáveis de ambiente do Supabase não estão configuradas.");
   }
 
   return createClient(supabaseUrl, key, {
@@ -22,7 +22,7 @@ const createSupabaseClient = (key: string) => {
 export const getBrowserSupabaseClient = () => {
   if (!browserClient) {
     if (!supabaseAnonKey) {
-      throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY is missing.");
+      throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY não está definida.");
     }
     browserClient = createSupabaseClient(supabaseAnonKey);
   }
@@ -32,7 +32,7 @@ export const getBrowserSupabaseClient = () => {
 
 export const createServiceRoleClient = () => {
   if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing.");
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY não está definida.");
   }
 
   return createSupabaseClient(serviceRoleKey);

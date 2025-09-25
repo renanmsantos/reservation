@@ -12,6 +12,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
     "db:apply": "ts-node --transpile-only --project tsconfig.scripts.json scripts/apply-schema.ts",
+    "db:seed:events": "ts-node --transpile-only --project tsconfig.scripts.json scripts/seed-default-event.ts",
     "report:daily": "ts-node --transpile-only --project tsconfig.scripts.json scripts/run-daily-summary.ts"
   },
   "dependencies": {

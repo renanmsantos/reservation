@@ -1,4 +1,7 @@
-import clsx from "clsx";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export type QueueStatus = "confirmed" | "waitlisted";
 
@@ -10,7 +13,7 @@ export type QueueReservation = {
 };
 
 type QueueSectionProps = {
-  title: string;
+  title?: string | null;
   items: QueueReservation[];
   emptyState: string;
   highlightedName?: string | null;
@@ -20,58 +23,104 @@ type QueueSectionProps = {
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
+const seatTone = (status: QueueStatus) =>
+  status === "confirmed"
+    ? "border-emerald-400/60 bg-emerald-400/20"
+    : "border-amber-300/50 bg-amber-300/15";
+
+const PassengerIcon = ({ className }: { className?: string }) => (
+  <svg
+    aria-hidden="true"
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="1.6"
+    viewBox="0 0 24 24"
+  >
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5.5 19.5a6.5 6.5 0 0 1 13 0" />
+  </svg>
+);
+
 export const QueueSection = ({ title, items, emptyState, highlightedName, onRelease, releasingIds }: QueueSectionProps) => (
-  <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-    <header className="space-y-1">
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      <p className="text-sm text-slate-500">
-        {items.length} {items.length === 1 ? "person" : "people"}
-      </p>
-    </header>
+  <Card className="bg-card/80 backdrop-blur">
+    {title ? (
+      <CardHeader className="space-y-2">
+        <CardTitle className="text-lg font-semibold tracking-tight">{title}</CardTitle>
+        <CardDescription className="text-sm text-muted-foreground">
+          {items.length} {items.length === 1 ? "pessoa" : "pessoas"}
+        </CardDescription>
+      </CardHeader>
+    ) : null}
+    <CardContent className="space-y-6">
+      <div className="relative overflow-hidden rounded-[2.5rem] border border-border/40 bg-gradient-to-br from-secondary/70 via-secondary/40 to-secondary/60 p-6 shadow-inner">
+        <div className="pointer-events-none absolute inset-y-6 left-1/2 hidden w-12 -translate-x-1/2 rounded-full bg-background/10 ring-1 ring-border/30 sm:block" />
+        {items.length === 0 ? (
+          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">{emptyState}</div>
+        ) : (
+          <div className="grid justify-items-center gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {items.map((reservation) => {
+              const releasing = Boolean(releasingIds?.has(reservation.id));
+              const isHighlighted =
+                highlightedName && normalize(reservation.fullName) === normalize(highlightedName);
 
-    <ol className="space-y-2">
-      {items.length === 0 && (
-        <li className="text-sm text-slate-500">{emptyState}</li>
-      )}
-
-      {items.map((reservation) => {
-        const releasing = Boolean(releasingIds?.has(reservation.id));
-
-        return (
-          <li
-            key={`${reservation.status}-${reservation.position}-${reservation.fullName}`}
-            className={clsx(
-              "flex flex-col gap-2 rounded-lg border px-4 py-3 md:flex-row md:items-center md:justify-between",
-              reservation.status === "confirmed"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                : "border-amber-200 bg-amber-50 text-amber-900",
-              highlightedName && normalize(reservation.fullName) === normalize(highlightedName)
-                ? "ring-2 ring-emerald-500"
-                : null,
-            )}
-          >
-            <div className="flex items-center gap-3">
-              <span className="font-medium">{reservation.fullName}</span>
-              <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                #{reservation.position}
-              </span>
-            </div>
-
-            {onRelease && (
-              <button
-                className="rounded-md border border-current px-3 py-1 text-xs font-semibold uppercase tracking-wide text-current transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-offset-2"
-                disabled={releasing}
-                onClick={() => onRelease(reservation)}
-                type="button"
-              >
-                {releasing ? "Releasing…" : "Release seat"}
-              </button>
-            )}
-          </li>
-        );
-      })}
-    </ol>
-  </section>
+              return (
+                <div key={reservation.id} className="flex w-full max-w-[160px] flex-col items-center gap-2 text-center">
+                  <div
+                    className={cn(
+                      "group relative flex h-16 w-16 items-center justify-center rounded-[1.4rem] border bg-background/60 text-primary-foreground shadow-md transition",
+                      seatTone(reservation.status),
+                      isHighlighted ? "ring-2 ring-primary/70" : null,
+                      releasing ? "opacity-60" : null,
+                    )}
+                    title={reservation.fullName}
+                  >
+                    <PassengerIcon className="h-6 w-6" />
+                    <span className="absolute -right-2 -top-2 rounded-full bg-background px-2 py-0.5 text-[11px] font-semibold text-foreground shadow">
+                      #{reservation.position}
+                    </span>
+                  </div>
+                  <span className="line-clamp-2 text-sm font-medium text-foreground/90">
+                    {reservation.fullName}
+                  </span>
+                  <Badge className="bg-primary/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-primary-foreground/80">
+                    {reservation.status === "confirmed" ? "Confirmado" : "Espera"}
+                  </Badge>
+                  {onRelease && (
+                    <Button
+                      variant="outline"
+                      className="flex w-full items-center justify-center gap-2 border-emerald-400/70 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-100 hover:bg-emerald-500/25"
+                      disabled={releasing}
+                      onClick={() => onRelease(reservation)}
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="1.6"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M7 11V7a5 5 0 0 1 10 0" />
+                        <rect width="14" height="10" x="5" y="11" rx="2" />
+                        <path d="M10 16h4" />
+                      </svg>
+                      <span>{releasing ? "Liberando…" : "Liberar"}</span>
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </CardContent>
+  </Card>
 );
 
 export default QueueSection;

@@ -3,28 +3,125 @@ create extension if not exists "pgcrypto";
 -- Schema definition for van reservation queue
 create schema if not exists public;
 
+create table if not exists public.events (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  event_date date not null,
+  status text not null check (status in ('planejado', 'em_andamento', 'finalizado')),
+  total_cost numeric(12,2) not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.vans (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   departure_timestamp timestamptz not null,
   capacity integer not null default 15,
+  default_event_id uuid references public.events(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'vans'
+      and column_name = 'default_event_id'
+  ) then
+    alter table public.vans
+      add column default_event_id uuid;
+  end if;
+end;
+$$;
+
+alter table if exists public.vans
+  drop constraint if exists vans_default_event_id_fkey;
+
+alter table if exists public.vans
+  add constraint vans_default_event_id_fkey
+    foreign key (default_event_id)
+    references public.events(id)
+    on delete set null;
+
 create table if not exists public.reservations (
   id uuid primary key default gen_random_uuid(),
   van_id uuid not null references public.vans(id) on delete cascade,
+  event_id uuid references public.events(id) on delete set null,
   full_name text not null,
   email text,
   status text not null check (status in ('confirmed', 'waitlisted', 'cancelled')),
   position integer not null,
   joined_at timestamptz not null default now(),
-  released_at timestamptz
+  released_at timestamptz,
+  charged_amount numeric(12,2) not null default 0
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'event_id'
+  ) then
+    alter table public.reservations
+      add column event_id uuid;
+  end if;
+end;
+$$;
+
+alter table if exists public.reservations
+  drop constraint if exists reservations_event_id_fkey;
+
+alter table if exists public.reservations
+  add constraint reservations_event_id_fkey
+    foreign key (event_id)
+    references public.events(id)
+    on delete set null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'charged_amount'
+  ) then
+    alter table public.reservations
+      add column charged_amount numeric(12,2) not null default 0;
+  end if;
+end;
+$$;
+
+create table if not exists public.event_vans (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.events(id) on delete cascade,
+  van_id uuid not null references public.vans(id) on delete cascade,
+  status text not null check (status in ('aberta', 'fechada', 'em_espera')),
+  per_passenger_cost numeric(12,2),
+  closed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(event_id, van_id)
 );
 
 create index if not exists reservations_van_status_position_idx
   on public.reservations (van_id, status, position);
+
+create index if not exists reservations_event_idx
+  on public.reservations (event_id);
+
+create index if not exists event_vans_event_idx
+  on public.event_vans (event_id);
+
+create index if not exists event_vans_van_idx
+  on public.event_vans (van_id);
 
 create table if not exists public.duplicate_name_overrides (
   id uuid primary key default gen_random_uuid(),
@@ -54,6 +151,9 @@ create table if not exists public.reservation_events (
 
 create index if not exists reservation_events_created_at_idx
   on public.reservation_events (created_at desc);
+
+create index if not exists events_name_date_idx
+  on public.events (name, event_date);
 
 -- Row Level Security policies
 alter table public.reservations enable row level security;

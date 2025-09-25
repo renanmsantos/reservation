@@ -6,6 +6,7 @@ import {
   ensureVanByName,
   logReservationEvent,
   mapReservationRow,
+  toPostgrestError,
 } from "@/lib/reservations-service";
 import { createServiceRoleClient } from "@/lib/supabase";
 
@@ -20,7 +21,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       {
-        message: error instanceof Error ? error.message : "Failed to fetch reservations queue.",
+        message: error instanceof Error ? error.message : "Não foi possível carregar a fila de reservas.",
       },
       { status: 500 },
     );
@@ -29,31 +30,78 @@ export async function GET() {
 
 type PostPayload = {
   fullName?: string;
-  email?: string;
 };
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as PostPayload | null;
 
   if (!body || !body.fullName) {
-    return NextResponse.json({ message: "Full name is required." }, { status: 400 });
+    return NextResponse.json({ message: "Nome completo é obrigatório." }, { status: 400 });
   }
 
   const fullName = sanitizeFullName(body.fullName);
 
   if (fullName.length < 3) {
-    return NextResponse.json({ message: "Full name must be at least 3 characters." }, { status: 422 });
+    return NextResponse.json({ message: "O nome completo precisa ter pelo menos 3 caracteres." }, { status: 422 });
   }
-
-  const email = body.email?.trim() || null;
 
   try {
     const client = createServiceRoleClient();
     const van = await ensureVanByName(client, { name: DEFAULT_VAN_NAME });
 
+    const { data: eventAssociation } = await client
+      .from("event_vans")
+      .select("event_id, status")
+      .eq("van_id", van.id)
+      .maybeSingle();
+
+    if (eventAssociation?.status === "fechada") {
+      return NextResponse.json(
+        {
+          message: "Reservas encerradas para esta van.",
+          code: "van_closed",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (eventAssociation?.status === "em_espera") {
+      return NextResponse.json(
+        {
+          message: "Esta van está em espera. Aguarde instruções do organizador.",
+          code: "van_on_hold",
+        },
+        { status: 409 },
+      );
+    }
+
+    const eventId = eventAssociation?.event_id ?? van.default_event_id ?? null;
+
+    if (eventId) {
+      const { data: relatedEvent, error: relatedEventError } = await client
+        .from("events")
+        .select("status")
+        .eq("id", eventId)
+        .maybeSingle();
+
+      if (relatedEventError) {
+        throw relatedEventError;
+      }
+
+      if (relatedEvent?.status === "finalizado") {
+        return NextResponse.json(
+          {
+            message: "Evento finalizado. Reservas não são mais permitidas.",
+            code: "event_finalizado",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const { data: existingReservation, error: existingError } = await client
       .from("reservations")
-      .select("id, van_id, full_name, email, status, position, joined_at")
+      .select("id, van_id, event_id, full_name, status, position, joined_at")
       .eq("full_name", fullName)
       .in("status", ACTIVE_STATUSES)
       .maybeSingle();
@@ -62,6 +110,8 @@ export async function POST(request: Request) {
       throw existingError;
     }
 
+    let overrideActive = false;
+
     if (existingReservation) {
       const { data: override } = await client
         .from("duplicate_name_overrides")
@@ -69,8 +119,9 @@ export async function POST(request: Request) {
         .eq("full_name", fullName)
         .maybeSingle();
 
-      const overrideActive =
-        override && (!override.expires_at || new Date(override.expires_at).getTime() > Date.now());
+      overrideActive = Boolean(
+        override && (!override.expires_at || new Date(override.expires_at).getTime() > Date.now()),
+      );
 
       if (!overrideActive) {
         await logReservationEvent(client, "duplicate_blocked", {
@@ -81,7 +132,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json(
           {
-            message: "This full name already holds an active reservation.",
+            message: "Este nome completo já possui uma reserva ativa.",
             code: "duplicate_name",
             existingReservation: mapReservationRow(existingReservation),
           },
@@ -128,12 +179,12 @@ export async function POST(request: Request) {
       .from("reservations")
       .insert({
         van_id: van.id,
+        event_id: eventId,
         full_name: fullName,
-        email,
         status,
         position,
       })
-      .select("id, van_id, full_name, email, status, position, joined_at")
+      .select("id, van_id, event_id, full_name, status, position, joined_at")
       .single();
 
     if (insertResult.error) {
@@ -145,7 +196,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json(
           {
-            message: "This full name already holds an active reservation.",
+            message: "Este nome completo já possui uma reserva ativa.",
             code: "duplicate_name",
           },
           { status: 409 },
@@ -168,18 +219,32 @@ export async function POST(request: Request) {
       {
         message:
           status === "confirmed"
-            ? "Seat confirmed! You are on the passenger list."
-            : "All seats are taken—you're on the waitlist and will auto-promote when a spot opens.",
+            ? "Vaga confirmada! Você está na lista de passageiros."
+            : "Todas as vagas foram preenchidas — você está na lista de espera e será promovido automaticamente quando surgir uma vaga.",
         status,
         queue,
       },
       { status: 201 },
     );
   } catch (error) {
+    const supabaseError = toPostgrestError(error);
+
+    if (supabaseError?.code === "P0001" || supabaseError?.message === "duplicate_full_name") {
+      return NextResponse.json(
+        {
+          message: "Este nome completo já possui uma reserva ativa.",
+          code: "duplicate_name",
+        },
+        { status: 409 },
+      );
+    }
+
+    console.error("POST /api/reservations", error);
+
     return NextResponse.json(
       {
-        message: error instanceof Error ? error.message : "Failed to create reservation.",
-        code: "unexpected_error",
+        message: supabaseError?.hint ?? supabaseError?.message ?? "Não foi possível criar a reserva.",
+        code: supabaseError?.code || "unexpected_error",
       },
       { status: 500 },
     );

@@ -4,12 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
+import { NotificationsProvider } from "@/components/ui/notifications-provider";
 
 const mockQueuePayload = {
   queue: {
     van: {
       id: "van-1",
-      name: "Main Van",
+      name: "Van Principal",
       capacity: 15,
     },
     confirmed: [
@@ -17,7 +18,6 @@ const mockQueuePayload = {
         id: "reservation-1",
         vanId: "van-1",
         fullName: "Jordan Carter",
-        email: "jordan@example.com",
         status: "confirmed",
         position: 1,
         joinedAt: new Date().toISOString(),
@@ -44,19 +44,16 @@ describe("HomePage", () => {
   });
 
   it("renders the reservation headline and sections", async () => {
-    render(<HomePage />);
+    render(<HomePage />, { wrapper: ({ children }) => <NotificationsProvider>{children}</NotificationsProvider> });
 
-    expect(
-      await screen.findByRole("heading", { name: /reserve your spot for the next ride/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/one active reservation per full name/i)).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: /confirmed passengers/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /reserve my seat/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /status/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /confirmados/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /reservar/i })).toBeInTheDocument();
   });
 
   it("releases a reservation and shows confirmation message", async () => {
     const releaseQueuePayload = {
-      message: "Reservation released.",
+      message: "Reserva liberada. A próxima pessoa da fila foi promovida automaticamente.",
       queue: {
         ...mockQueuePayload.queue,
         confirmed: [],
@@ -66,7 +63,6 @@ describe("HomePage", () => {
         id: "reservation-1",
         van_id: "van-1",
         full_name: "Jordan Carter",
-        email: "jordan@example.com",
         status: "cancelled",
         position: 1,
         joined_at: new Date().toISOString(),
@@ -82,15 +78,15 @@ describe("HomePage", () => {
 
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    render(<HomePage />);
+    render(<HomePage />, { wrapper: ({ children }) => <NotificationsProvider>{children}</NotificationsProvider> });
 
-    const releaseButton = await screen.findByRole("button", { name: /release seat/i });
+    const releaseButton = await screen.findByRole("button", { name: /liberar/i });
     await userEvent.click(releaseButton);
 
     expect(confirmSpy).toHaveBeenCalled();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock).toHaveBeenLastCalledWith("/api/reservations/reservation-1", expect.objectContaining({ method: "DELETE" }));
-    expect(await screen.findByText(/reservation released/i)).toBeInTheDocument();
+    expect(await screen.findByText(/reserva liberada/i)).toBeInTheDocument();
 
     confirmSpy.mockRestore();
   });
